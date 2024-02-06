@@ -30,34 +30,24 @@ html, body {
   html .clearfix, body .clearfix {
     clear: both; }
 
-div.column {
-  position: relative;
-  float: left;
-  overflow: auto;
-  height: 100%;
-  min-height: 100%;
-  width: 50%; }
 
-@media screen and (max-width: 1000px) {
-  div.column {
-    width: 100% !important;
-    overflow: hidden;
-    height: auto; } }
- div.stats {
-  height: 80%;
-  width: 70%;
-  margin: 13vmin auto 0;
-  box-sizing: border-box;
-  padding: 20px 30px;
-  background-color: #F1F1FF;
-  color: #3A3042;
-  border-radius: 3px;
-  box-shadow: 1px 1px 3px #232621; }
-
+    
+    div.stats {
+      height: 80%;
+      width: 40%;
+      margin: 13vmin auto 0;
+      box-sizing: border-box;
+      padding: 20px 30px;
+      background-color: #F1F1FF;
+      color: #3A3042;
+      border-radius: 3px;
+      box-shadow: 1px 1px 3px #232621;
+      position: absolute; /* add this property */
+      right: 0; /* add this property */
+      top: 0; /* add this property */
+    }
 div.stats {
   margin: 50px auto !important; }
-  div.stats .wrapper {
-    display: flex; }
   div.stats #player1 {
     text-align: center;
     display: inline-block;
@@ -111,30 +101,35 @@ div.stats {
     display: block;
     padding: 10px 0 0;
     text-align: center; }
-  div.stats button#cleargame {
-    display: block;
-    border: 0;
-    color: #F1F1FF;
-    border-radius: 5px;
-    cursor: pointer;
-    margin: 20px auto 10px;
-    padding: 10px;
-    background-color: #16A8C7;
-    box-shadow: 1px 1px 3px #232621;
-    transition: background-color 0.15s linear; }
+    div.stats button#cleargame {
+      display: inline-block;
+     border: 0;
+      color: #F1F1FF;
+      border-radius: 5px;
+      cursor: pointer;
+      margin: 20px auto 10px;
+      padding: 10px;
+      background-color: #16A8C7;
+      box-shadow: 1px 1px 3px #232621;
+      transition: background-color 0.15s linear;
+    }
+    
     div.stats button#cleargame:hover {
-      background-color: #0c5a6b; }
+      background-color: #0c5a6b;
+    }
 
-div#board {
-  position: absolute;
-  top: calc(50% - 40vmin);
-  left: calc(50% - 40vmin);
-  width: 80vmin;
-  height: 80vmin;
-  border-radius: 5px;
-  box-shadow: 1px 1px 3px #212426;
-  background-color: #ffffff;
-  overflow: hidden; }
+      div#board {
+        position: absolute;
+        top:1%;
+        left: 0;
+        width: 80vmin;
+        height: 80vmin;
+        border-radius: 5px;
+        box-shadow: 1px 1px 3px #212426;
+        background-color: #ffffff;
+        overflow: hidden;
+        margin-left: -120%; /* add a margin to the left */
+      }
   div#board .tile {
     width: 10vmin;
     height: 10vmin;
@@ -179,3 +174,4 @@ div#board {
       
 
 /*# sourceMappingURL=style.css.map */
+
