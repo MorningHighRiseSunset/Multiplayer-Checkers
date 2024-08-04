@@ -77,6 +77,7 @@ div.stats {
     float: left;
     background-color: #232621;
     box-sizing: border-box;
+    display: block; /* Changed from inline-block to block */
     padding: 0 15px 20px;
     border-top-right-radius: 3px;
     color: #005d9b; }
@@ -235,4 +236,67 @@ div.stats {
 .blueButton:active {
   position:relative;
   top:1px;
+}
+
+#moveHistory {
+  margin-top: 10px; /* Reduced margin to move it up */
+  padding: 20px;
+  border: 1px solid #ccc;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s;
+  height: 150px; /* Fixed height */
+  overflow: auto; /* Change to auto to allow scrolling */
+}
+
+#moveHistory {
+  margin-top: 10px; /* Reduced margin to move it up */
+  padding: 20px;
+  border: 1px solid #ccc;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s;
+  height: 140px; /* Fixed height */
+  overflow: auto; /* Allow scrolling */
+}
+
+/* Invisible scrollbar styles */
+#moveHistory::-webkit-scrollbar {
+  width: 8px; /* Width of the scrollbar */
+}
+
+#moveHistory::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.5); /* Color of the scrollbar thumb */
+  border-radius: 10px; /* Rounded corners for the scrollbar thumb */
+}
+
+#moveHistory::-webkit-scrollbar-track {
+  background: transparent; /* Background of the scrollbar track */
+}
+
+#moveHistory:hover::-webkit-scrollbar {
+  width: 8px; /* Show scrollbar on hover */
+}
+
+#moveHistory h4 {
+  margin: 0 0 10px;
+  font-family: 'Lato', sans-serif;
+  color: #333;
+}
+
+#moveHistory div {
+  padding: 5px;
+  border-bottom: 1px solid #ddd;
+  color: #555;
+}
+
+#moveHistory div:last-child {
+  border-bottom: none; /* Remove border from last item */
+}
+
+#moveHistory:hover {
+  transform: translateY(-2px); /* Lift effect on hover */
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
 }
