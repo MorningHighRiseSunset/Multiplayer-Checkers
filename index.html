@@ -19,7 +19,7 @@
       </div>
       <div id="player2">
         <h3>Player 2 (Bottom)</h3>
-        </div>
+      </div>
       <div class="clearfix"></div>
       <div class="turn"></div>
       <span id="winner"></span> 
@@ -55,34 +55,31 @@
   <iframe 
       src="https://brie.fi/ng/good-exit-72?audio=0&video=0&fs=1&invite=0&prefs=1&share=0&chat=1"
       allow="camera; microphone; fullscreen; speaker; display-capture"
-      style="width: 100%; height: 70%; border: none; overflow: hidden;"
+      style="width: 100%; height: 40%; border: none; overflow: hidden;"
     ></iframe>
-   <div id="instructions-popup" class="popup hide">
-        <div class="popup-content">
-            <span id="close-popup" class="close">&times;</span>
-            <h2>Instructions</h2>
-            <p>Follow these steps to play Checkers:</p>
-            <ol>
-                <li>Black moves first, followed by White. Players alternate turns.</li>
-                <li>Pieces move diagonally forward to an adjacent unoccupied dark square.</li>
-                <li>If an opponent's piece is on a diagonally adjacent square and the square immediately beyond it is vacant, you must capture the opponent's piece by jumping over it.</li>
-                <li>Captured pieces are removed from the board.</li>
-                <li>If a piece reaches the farthest row from the player, it is crowned and becomes a "king." Kings can move diagonally forward and backward.</li>
-                <li>The objective is to capture all of the opponent's pieces or block them so they cannot move.</li>
-                <li>The game ends when one player captures all the opponent's pieces or blocks them from making any legal moves.</li>
-            </ol>
-            <p>In the video chat, there's a communication option available to chat with your opponent (💬).</p>
-            <p>Click Video icon (📷) to activate video chat</p>
-                    <p>To deactivate video chat, click (📷) again.</p>
-                    <p>Please ensure camera & mic access is on in your site's settings (⚙️)</p>
-        </div>
+    
+    <!-- New section for copying and printing moves -->
+    <div style="margin-top: 20px;">
+      <h3>Checker Moves</h3>
+      <input type="button" class="blueButton" id="copyMovesBtn" value="COPY">
+      <input type="button" class="blueButton" id="printMovesBtn" value="PRINT">
     </div>
-    <button id="instructions-button">Instructions</button>
+
     <div id="board">
       <div class="tiles"></div>
       <div class="pieces">
-        <div class="player1pieces">
-        <div class="player2pieces">
+        <div class="player1pieces"></div>
+        <div class="player2pieces"></div>
+      </div>
+    </div>
+    
+    <!-- Move History Section -->
+    <div id="moveHistory" style="margin-top: 20px; padding: 10px; border: 1px solid #ccc; background-color: #f9f9f9;">
+      <h4>Move History</h4>
+      <!-- Moves will be appended here -->
+    </div>
 
+    <!-- New Game Button -->
+    <button id="newGameBtn" style="display:none; margin-top: 20px;">New Game</button>
 </body>
 </html>
