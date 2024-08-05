@@ -16,18 +16,21 @@ window.onload = function () {
   
   // Array to store moves
   var moveHistory = [];
-  var moveList = []; // New array to store moves in SAN format
 
   // Function to update move history
-  function updateMoveHistory(move, fromTile, toTile, captureInfo) {
+  function updateMoveHistory(move) {
     moveHistory.push(move);
-    moveList.push({ san: move }); // Store move in SAN format
     $('#moveHistory').append("<div>" + move + "</div>"); // Assuming you have a div with id 'moveHistory'
-}
+  }
 
   // Distance formula
   var dist = function (x1, y1, x2, y2) {
     return Math.sqrt(Math.pow((x1 - x2), 2) + Math.pow((y1 - y2), 2));
+  }
+
+  // Function to convert row and column to tile number
+  function convertToTileNumber(row, column) {
+    return (row % 2 === 0 ? (row * 4) + (column / 2) + 1 : (row * 4) + (column / 2) + 1);
   }
 
   // Piece object
@@ -43,9 +46,7 @@ window.onload = function () {
       this.king = true;
       // Notify that the piece has been crowned
       console.log("Player " + this.player + "'s piece has been crowned a king!");
-      // Comment indicating the piece reached the opposite side
-      console.log("Piece reached the opposite side and became a king!");
-  }
+    }
 
     this.move = function (tile) {
       this.element.removeClass('selected');
@@ -215,21 +216,15 @@ window.onload = function () {
       this.check_if_jump_exist();
     },
 
-    // Check for win conditions
-    checkForWin: function () {
-      if (this.score.player1 >= 12) {
-        // Record the win in move history instead of alerting
-        updateMoveHistory("Player 1 wins!");
-        this.showNewGameButton();
-      } else if (this.score.player2 >= 12) {
-        // Record the win in move history instead of alerting
-        updateMoveHistory("Player 2 wins!");
-        this.showNewGameButton();
+    checkifAnybodyWon: function () {
+      if (this.score.player1 == 12) {
+        alert("Player 1 wins!"); // Notify Player 1 wins
+        return 1; // Player 1 wins
+      } else if (this.score.player2 == 12) {
+        alert("Player 2 wins!"); // Notify Player 2 wins
+        return 2; // Player 2 wins
       }
-    },
-
-    showNewGameButton: function() {
-      $('#newGameBtn').show(); // Show the new game button
+      return false;
     },
 
     // Reset the game
@@ -251,6 +246,36 @@ window.onload = function () {
         for (let k of pieces) k.allowedtomove = true;
       }
     },
+
+    // Check for win conditions
+    checkForWin: function () {
+      if (this.score.player1 >= 12) {
+        alert("Player 1 wins!"); // Notify Player 1 wins
+        this.clear();
+      } else if (this.score.player2 >= 12) {
+        alert("Player 2 wins!"); // Notify Player 2 wins
+        this.clear();
+      }
+    },
+
+    // Possibly helpful for communication with back-end.
+    str_board: function () {
+      let ret = "";
+      for (let i in this.board) {
+        for (let j in this.board[i]) {
+          let found = false;
+          for (let k of pieces) {
+            if (k.position[0] == i && k.position[1] == j) {
+              ret += k.king ? (this.board[i][j] + 2) : this.board[i][j];
+              found = true;
+              break;
+            }
+          }
+          if (!found) ret += '0';
+        }
+      }
+      return ret;
+    }
   }
 
   // Initialize the board
@@ -286,61 +311,62 @@ window.onload = function () {
   // Move piece when tile is clicked
   $('.tile').on("click", function () {
     if ($('.selected').length != 0) {
-        var tileID = $(this).attr("id").replace(/tile/, '');
-        var tile = tiles[tileID];
-        var piece = pieces[$('.selected').attr("id")];
-        var inRange = tile.inRange(piece);
-        if (inRange != 'wrong') {
-            if (inRange == 'jump') {
-                if (piece.opponentJump(tile)) {
-                    var lastTile = $('.selected').attr("id"); // Get the last tile the piece was on
-                    piece.move(tile);
-                    var opponentTile = tile.position; // Get the position of the opponent's tile
-                    updateMoveHistory("Player " + piece.player + " captured E" + lastTile + " X E" + opponentTile[0] + "," + opponentTile[1], tileID);
-                    if (piece.canJumpAny()) {
-                        piece.element.addClass('selected');
-                        Board.continuousjump = true;
-                    } else {
-                        Board.changePlayerTurn();
-                    }
-                }
-            } else if (inRange == 'regular' && !Board.jumpexist) {
-                if (!piece.canJumpAny()) {
-                    var lastTile = $('.selected').attr("id"); // Get the last tile the piece was on
-                    piece.move(tile);
-                    updateMoveHistory("Player " + piece.player + " moved from tile " + lastTile + " - " + tileID, lastTile, tileID);
-                    Board.changePlayerTurn();
-                } else {
-                    alert("You must jump when possible!");
-                }
+      var tileID = $(this).attr("id").replace(/tile/, '');
+      var tile = tiles[tileID];
+      var piece = pieces[$('.selected').attr("id")];
+      var inRange = tile.inRange(piece);
+      
+      // Check if the selected tile is the same as the piece's current position
+      if (tile.position[0] === piece.position[0] && tile.position[1] === piece.position[1]) {
+          console.log("You cannot move to the same tile!");
+          return; // Prevent moving to the same tile
+      }
+
+      // Log the tile number instead of coordinates
+      console.log("Moving to tile number: " + convertToTileNumber(tile.position[0], tile.position[1]));
+
+      if (inRange != 'wrong') {
+        if (inRange == 'jump') {
+          if (piece.opponentJump(tile)) {
+            piece.move(tile);
+            updateMoveHistory("Player " + piece.player + " jumped from " + piece.position + " to " + tile.position + " (captured opponent's piece)");
+            if (piece.canJumpAny()) {
+              piece.element.addClass('selected');
+              Board.continuousjump = true;
+            } else {
+              Board.changePlayerTurn();
             }
+          }
+        } else if (inRange == 'regular' && !Board.jumpexist) {
+          if (!piece.canJumpAny()) {
+            piece.move(tile);
+            updateMoveHistory("Player " + piece.player + " moved from " + piece.position + " to " + tile.position);
+            Board.changePlayerTurn();
+          } else {
+            alert("You must jump when possible!");
+          }
         }
+      }
     }
-});
-
-  // New buttons for copying and printing moves
-  $('#copyMovesBtn').on('click', function() {
-    var movesText = moveList.map(move => move.san).join(', '); // Collect moves in SAN format
-    navigator.clipboard.writeText(movesText).then(function() {
-      swal("Success", "Moves copied to clipboard!", "success");
-    }, function(err) {
-      swal("Error", "Failed to copy moves: " + err, "error");
-    });
-  });
-
-  $('#printMovesBtn').on('click', function() {
-    var movesText = moveList.map(move => move.san).join(', '); // Collect moves in SAN format
-    var printWindow = window.open('', '', 'height=400,width=600');
-    printWindow.document.write('<html><head><title>Checkers Moves</title></head><body>');
-    printWindow.document.write('<h1>Recorded Checkers Moves</h1>');
-    printWindow.document.write('<pre>' + movesText + '</pre>');
-    printWindow.document.write('</body></html>');
-    printWindow.document.close();
-    printWindow.print();
-  });
-
-  // New Game button functionality
-  $('#newGameBtn').on('click', function() {
-    location.reload(); // Reload the page to start a new game
   });
 }
+
+document.addEventListener("DOMContentLoaded", function() {
+  const instructionsButton = document.getElementById("instructions-button");
+  const instructionsPopup = document.getElementById("instructions-popup");
+  const closePopup = document.getElementById("close-popup");
+
+  instructionsButton.addEventListener("click", function() {
+      instructionsPopup.style.display = "block";
+  });
+
+  closePopup.addEventListener("click", function() {
+      instructionsPopup.style.display = "none";
+  });
+
+  window.addEventListener("click", function(event) {
+      if (event.target == instructionsPopup) {
+          instructionsPopup.style.display = "none";
+      }
+  });
+});
