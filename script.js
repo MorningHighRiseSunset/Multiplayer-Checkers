@@ -23,6 +23,8 @@ window.onload = function () {
     moveHistory.push(move);
     moveList.push({ san: move }); // Store move in SAN format
     $('#moveHistory').append("<div>" + move + "</div>"); // Assuming you have a div with id 'moveHistory'
+    // Scroll to the bottom of the move history
+    $('#moveHistory').scrollTop($('#moveHistory')[0].scrollHeight);
   }
 
   // Distance formula
@@ -45,6 +47,8 @@ window.onload = function () {
       console.log("Player " + this.player + "'s piece has been crowned a king!");
       // Comment indicating the piece reached the opposite side
       console.log("Piece reached the opposite side and became a king!");
+      // Update move history with the king message
+      updateMoveHistory("Player " + this.player + "'s piece has been crowned a king!");
     }
 
     this.move = function (tile) {
