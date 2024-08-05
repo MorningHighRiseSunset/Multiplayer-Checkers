@@ -19,11 +19,11 @@ window.onload = function () {
   var moveList = []; // New array to store moves in SAN format
 
   // Function to update move history
-  function updateMoveHistory(move) {
+  function updateMoveHistory(move, fromTile, toTile, captureInfo) {
     moveHistory.push(move);
     moveList.push({ san: move }); // Store move in SAN format
     $('#moveHistory').append("<div>" + move + "</div>"); // Assuming you have a div with id 'moveHistory'
-  }
+}
 
   // Distance formula
   var dist = function (x1, y1, x2, y2) {
@@ -43,7 +43,9 @@ window.onload = function () {
       this.king = true;
       // Notify that the piece has been crowned
       console.log("Player " + this.player + "'s piece has been crowned a king!");
-    }
+      // Comment indicating the piece reached the opposite side
+      console.log("Piece reached the opposite side and became a king!");
+  }
 
     this.move = function (tile) {
       this.element.removeClass('selected');
@@ -284,34 +286,37 @@ window.onload = function () {
   // Move piece when tile is clicked
   $('.tile').on("click", function () {
     if ($('.selected').length != 0) {
-      var tileID = $(this).attr("id").replace(/tile/, '');
-      var tile = tiles[tileID];
-      var piece = pieces[$('.selected').attr("id")];
-      var inRange = tile.inRange(piece);
-      if (inRange != 'wrong') {
-        if (inRange == 'jump') {
-          if (piece.opponentJump(tile)) {
-            piece.move(tile);
-            updateMoveHistory("Player " + piece.player + " jumped from " + piece.position + " to " + tile.position + " (opponents pawn captured)");
-            if (piece.canJumpAny()) {
-              piece.element.addClass('selected');
-              Board.continuousjump = true;
-            } else {
-              Board.changePlayerTurn();
+        var tileID = $(this).attr("id").replace(/tile/, '');
+        var tile = tiles[tileID];
+        var piece = pieces[$('.selected').attr("id")];
+        var inRange = tile.inRange(piece);
+        if (inRange != 'wrong') {
+            if (inRange == 'jump') {
+                if (piece.opponentJump(tile)) {
+                    var lastTile = $('.selected').attr("id"); // Get the last tile the piece was on
+                    piece.move(tile);
+                    var opponentTile = tile.position; // Get the position of the opponent's tile
+                    updateMoveHistory("Player " + piece.player + " captured E" + lastTile + " X E" + opponentTile[0] + "," + opponentTile[1], tileID);
+                    if (piece.canJumpAny()) {
+                        piece.element.addClass('selected');
+                        Board.continuousjump = true;
+                    } else {
+                        Board.changePlayerTurn();
+                    }
+                }
+            } else if (inRange == 'regular' && !Board.jumpexist) {
+                if (!piece.canJumpAny()) {
+                    var lastTile = $('.selected').attr("id"); // Get the last tile the piece was on
+                    piece.move(tile);
+                    updateMoveHistory("Player " + piece.player + " moved from tile " + lastTile + " - " + tileID, lastTile, tileID);
+                    Board.changePlayerTurn();
+                } else {
+                    alert("You must jump when possible!");
+                }
             }
-          }
-        } else if (inRange == 'regular' && !Board.jumpexist) {
-          if (!piece.canJumpAny()) {
-            piece.move(tile);
-            updateMoveHistory("Player " + piece.player + " moved from " + piece.position + " to " + tile.position);
-            Board.changePlayerTurn();
-          } else {
-            alert("You must jump when possible!");
-          }
         }
-      }
     }
-  });
+});
 
   // New buttons for copying and printing moves
   $('#copyMovesBtn').on('click', function() {
