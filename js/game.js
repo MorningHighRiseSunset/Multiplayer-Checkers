@@ -2,7 +2,8 @@ const socket = io('https://multiplayer-checkers.onrender.com');
 
 const params = new URLSearchParams(window.location.search);
 const roomCode = params.get('room');
-let myColor = params.get('color'); // 'red' or 'black'
+let myColor = null; // Will be set by server!
+let mySocketId = null;
 
 const boardSize = 8;
 const boardDiv = document.getElementById('game-board');
@@ -29,17 +30,27 @@ const startBoard = sessionStorage.getItem('startBoard');
 const startMoveHistory = sessionStorage.getItem('startMoveHistory');
 const startFirstTurn = sessionStorage.getItem('startFirstTurn');
 
-// Join the game room
-console.log('[game.js] Emitting joinGame:', { room: roomCode, color: myColor });
-socket.emit('joinGame', { room: roomCode, color: myColor });
+// Get my socket id after connecting
+socket.on('connect', () => {
+  mySocketId = socket.id;
+  console.log('[game.js] My socket id:', mySocketId);
+  // Join the game room
+  socket.emit('joinGame', { room: roomCode });
+});
 
 // Listen for startGame with color assignment and first turn
 socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveHistory: serverHistory, roles }) => {
   console.log('[game.js] Received startGame:', { colorAssignments, firstTurn, serverBoard, serverHistory, roles });
+  console.log('[game.js] My socket id:', socket.id);
+  console.log('[game.js] Color assignments:', colorAssignments);
+
   // Assign my color if server sends it
   if (colorAssignments && socket.id in colorAssignments) {
     myColor = colorAssignments[socket.id];
     console.log('[game.js] My assigned color:', myColor);
+  } else {
+    myColor = null;
+    console.warn('[game.js] No color assigned for my socket!');
   }
   if (roles && roles[socket.id]) {
     myRole = roles[socket.id];
@@ -113,7 +124,7 @@ if (startBoard) {
   moveHistory = startMoveHistory ? JSON.parse(startMoveHistory) : [];
   currentPlayer = startFirstTurn || 'black';
   gameStarted = true;
-  isMyTurn = (myColor === currentPlayer);
+  // myColor will be set by startGame event!
   renderBoard();
   renderMoveHistory();
   updateStatus();
@@ -243,7 +254,7 @@ function onSquareClick(e) {
 
 // Send move to server, let server update board and broadcast to both players
 function sendMoveToServer(from, to, move) {
-  console.log('[game.js] Sending move to server:', { from, to, move });
+  console.log('[game.js] Sending move to server:', { from, to, move, myColor, mySocketId });
   socket.emit('move', {
     room: roomCode,
     from,
