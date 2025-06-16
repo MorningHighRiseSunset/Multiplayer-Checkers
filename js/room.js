@@ -24,6 +24,9 @@ socket.emit('joinRoom', roomCode);
 
 // Listen for role assignment and room state
 socket.on('roomState', (state) => {
+  // Defensive: ensure state and state.roles exist
+  if (!state || !state.roles) return;
+
   // Find my role
   for (const [sockId, role] of Object.entries(state.roles)) {
     if (sockId === socket.id) {
@@ -46,10 +49,12 @@ socket.on('roomState', (state) => {
     playerStatus[b.dataset.color].textContent = "";
   });
 
-  // Track which colors are picked and by whom
+  // Defensive: ensure state.colors exists
   let pickedColors = {};
-  for (const [sockId, color] of Object.entries(state.colors || {})) {
-    pickedColors[color] = sockId;
+  if (state.colors) {
+    for (const [sockId, color] of Object.entries(state.colors)) {
+      pickedColors[color] = sockId;
+    }
   }
 
   // Update pick buttons
