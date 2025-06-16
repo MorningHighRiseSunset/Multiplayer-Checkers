@@ -1,4 +1,4 @@
-// --- Multiplayer Room Logic with Socket.IO ---
+// --- Multiplayer Room Logic with Socket.IO and true presence sync ---
 
 const socket = io('https://multiplayer-checkers.onrender.com');
 
@@ -19,64 +19,73 @@ const dotRed = document.getElementById('dot-red');
 const dotBlack = document.getElementById('dot-black');
 
 let myColor = null;
-let opponentColor = null;
 let iAmReady = false;
 let opponentReady = false;
-let playersPresent = { red: false, black: false };
 
 // Join the room
 socket.emit('joinRoom', roomCode);
-
-// Set yourself as present when you join
-function updatePresence() {
-  if (myColor) {
-    playersPresent[myColor] = true;
-    updateDots();
-  }
-}
-function updateDots() {
-  dotRed.classList.toggle('active', playersPresent.red);
-  dotBlack.classList.toggle('active', playersPresent.black);
-}
 
 // Handle color pick
 pickBtns.forEach(btn => {
   btn.onclick = () => {
     myColor = btn.dataset.color;
     socket.emit('pickColor', { room: roomCode, color: myColor });
-    pickBtns.forEach(b => b.disabled = true);
-    btn.textContent = "You";
-    playerStatus[myColor].textContent = "You picked this!";
-    playersPresent[myColor] = true;
-    updateDots();
+    // Do not update UI here; wait for roomState event
     roomStatus.textContent = "Waiting for opponent to join and pick...";
   };
 });
 
-// Listen for color pick updates
-socket.on('colorPicked', ({ color }) => {
-  // Only update for opponent's pick
-  if (color === myColor) return;
-  opponentColor = color;
+// Listen for room state updates (true multiplayer sync)
+socket.on('roomState', (state) => {
+  // Reset dots and statuses
+  dotRed.classList.remove('active');
+  dotBlack.classList.remove('active');
   pickBtns.forEach(b => {
-    if (b.dataset.color === color) {
-      b.disabled = true;
-      playerStatus[color].textContent = "Opponent picked this!";
-      b.textContent = "Opponent";
-    }
+    b.disabled = false;
+    b.textContent = "Pick";
+    playerStatus[b.dataset.color].textContent = "";
   });
-  playersPresent[color] = true;
-  updateDots();
-  // Enable ready if you picked and opponent picked
-  if (myColor && opponentColor && myColor !== opponentColor) {
-    readyBtn.disabled = false;
-    roomStatus.textContent = "Both players picked! Click Ready when ready.";
-  }
-});
 
-// Listen for both colors picked (for the player who picks second)
-socket.on('bothPicked', () => {
-  if (myColor && opponentColor && myColor !== opponentColor) {
+  // Track which colors are picked and by whom
+  let pickedColors = {};
+  for (const [sockId, color] of Object.entries(state.colors)) {
+    pickedColors[color] = sockId;
+  }
+
+  // Update dots and pick buttons
+  if (pickedColors.red) {
+    dotRed.classList.add('active');
+    pickBtns.forEach(b => {
+      if (b.dataset.color === 'red') {
+        b.disabled = true;
+        if (myColor === 'red') {
+          b.textContent = "You";
+          playerStatus.red.textContent = "You picked this!";
+        } else {
+          b.textContent = "Opponent";
+          playerStatus.red.textContent = "Opponent picked this!";
+        }
+      }
+    });
+  }
+  if (pickedColors.black) {
+    dotBlack.classList.add('active');
+    pickBtns.forEach(b => {
+      if (b.dataset.color === 'black') {
+        b.disabled = true;
+        if (myColor === 'black') {
+          b.textContent = "You";
+          playerStatus.black.textContent = "You picked this!";
+        } else {
+          b.textContent = "Opponent";
+          playerStatus.black.textContent = "Opponent picked this!";
+        }
+      }
+    });
+  }
+
+  // Enable ready if both colors are picked and not the same
+  if (pickedColors.red && pickedColors.black && myColor && pickedColors.red !== pickedColors.black) {
     readyBtn.disabled = false;
     roomStatus.textContent = "Both players picked! Click Ready when ready.";
   }
@@ -112,24 +121,12 @@ socket.on('bothReady', () => {
 
 // Listen for opponent joining (to update presence dot)
 socket.on('opponentJoined', () => {
-  // If you already picked, mark opponent as present when they join
-  if (myColor === 'red') {
-    playersPresent.black = true;
-  } else if (myColor === 'black') {
-    playersPresent.red = true;
-  }
-  updateDots();
+  // No-op: roomState will handle presence
 });
 
 // Listen for opponent leaving
 socket.on('opponentLeft', () => {
-  // Remove opponent's presence
-  if (myColor === 'red') {
-    playersPresent.black = false;
-  } else if (myColor === 'black') {
-    playersPresent.red = false;
-  }
-  updateDots();
+  // Remove opponent's presence (roomState will handle dots)
   alert('Opponent left the room.');
   window.location.href = 'lobby.html';
 });
@@ -144,6 +141,3 @@ leaveBtn.onclick = () => {
 window.addEventListener('beforeunload', () => {
   socket.emit('leaveRoom', { room: roomCode, color: myColor });
 });
-
-// Initial dot update
-updateDots();

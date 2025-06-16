@@ -28,6 +28,16 @@ process.on('unhandledRejection', err => {
   console.error('Unhandled Rejection:', err);
 });
 
+// Helper: broadcast full room state to all clients in the room
+function broadcastRoomState(room) {
+  if (!rooms[room]) return;
+  const state = {
+    players: Object.values(rooms[room].colors), // ['red', 'black'] or []
+    colors: rooms[room].colors // {socketId: 'red', ...}
+  };
+  io.to(room).emit('roomState', state);
+}
+
 io.on('connection', (socket) => {
   let currentRoom = null;
   let playerColor = null;
@@ -49,6 +59,7 @@ io.on('connection', (socket) => {
       rooms[roomCode] = { players: {}, ready: {}, colors: {} };
     }
     rooms[roomCode].players[socket.id] = null;
+    broadcastRoomState(roomCode);
     socket.to(roomCode).emit('opponentJoined');
   });
 
@@ -57,6 +68,8 @@ io.on('connection', (socket) => {
     if (!rooms[room]) return;
     rooms[room].colors[socket.id] = color;
     playerColor = color;
+    broadcastRoomState(room);
+    // Notify both players of color pick (legacy, can be removed if only using roomState)
     io.to(room).emit('colorPicked', { color, byMe: false });
     const pickedColors = Object.values(rooms[room].colors);
     if (pickedColors.length === 2 && pickedColors[0] !== pickedColors[1]) {
@@ -99,6 +112,7 @@ io.on('connection', (socket) => {
       delete rooms[room].players[socket.id];
       delete rooms[room].ready[socket.id];
       delete rooms[room].colors[socket.id];
+      broadcastRoomState(room);
       socket.to(room).emit('opponentLeft');
       if (
         Object.keys(rooms[room].players).length === 0 &&
@@ -123,6 +137,7 @@ io.on('connection', (socket) => {
       delete rooms[currentRoom].players[socket.id];
       delete rooms[currentRoom].ready[socket.id];
       delete rooms[currentRoom].colors[socket.id];
+      broadcastRoomState(currentRoom);
       socket.to(currentRoom).emit('opponentLeft');
       if (
         Object.keys(rooms[currentRoom].players).length === 0 &&
