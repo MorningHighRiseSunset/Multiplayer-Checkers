@@ -29,10 +29,29 @@ process.on('unhandledRejection', err => {
 function broadcastRoomState(room) {
   if (!rooms[room]) return;
   const state = {
-    roles: rooms[room].roles, // {socketId: 'Player 1', ...}
-    colors: rooms[room].colors // {socketId: 'red', ...}
+    roles: rooms[room].roles,
+    colors: rooms[room].colors
   };
   io.to(room).emit('roomState', state);
+}
+
+// Helper: initialize a new board
+function getInitialBoard() {
+  const board = [];
+  for (let row = 0; row < 8; row++) {
+    let rowArr = [];
+    for (let col = 0; col < 8; col++) {
+      if ((row + col) % 2 === 1) {
+        if (row < 3) rowArr.push({ color: 'black', king: false });
+        else if (row > 4) rowArr.push({ color: 'red', king: false });
+        else rowArr.push(null);
+      } else {
+        rowArr.push(null);
+      }
+    }
+    board.push(rowArr);
+  }
+  return board;
 }
 
 io.on('connection', (socket) => {
@@ -41,7 +60,16 @@ io.on('connection', (socket) => {
 
   socket.on('createRoom', (roomCode) => {
     if (!rooms[roomCode]) {
-      rooms[roomCode] = { players: {}, ready: {}, colors: {}, roles: {} };
+      rooms[roomCode] = {
+        players: {},
+        ready: {},
+        colors: {},
+        roles: {},
+        inGame: false,
+        board: getInitialBoard(),
+        currentPlayer: 'black',
+        moveHistory: []
+      };
     }
   });
 
@@ -49,7 +77,16 @@ io.on('connection', (socket) => {
     currentRoom = roomCode;
     socket.join(roomCode);
     if (!rooms[roomCode]) {
-      rooms[roomCode] = { players: {}, ready: {}, colors: {}, roles: {} };
+      rooms[roomCode] = {
+        players: {},
+        ready: {},
+        colors: {},
+        roles: {},
+        inGame: false,
+        board: getInitialBoard(),
+        currentPlayer: 'black',
+        moveHistory: []
+      };
     }
     // Assign role
     const roleCount = Object.keys(rooms[roomCode].roles).length;
@@ -78,33 +115,85 @@ io.on('connection', (socket) => {
     rooms[room].ready[socket.id] = true;
     socket.to(room).emit('opponentReady', { color });
 
-    // If both players are ready, start the game and send color assignments
+    // If both players are ready, start the game and send color assignments and board state
     if (Object.keys(rooms[room].ready).length === 2) {
-      // Build color assignment map
       const colorAssignments = {};
       for (const [sockId, pickedColor] of Object.entries(rooms[room].colors)) {
         colorAssignments[sockId] = pickedColor;
       }
-      // Determine who is black (black goes first)
       let firstTurn = 'black';
-      io.to(room).emit('bothReady');
-      io.to(room).emit('startGame', { colorAssignments, firstTurn });
-      // Mark room as "inGame" to suppress leave notifications
       rooms[room].inGame = true;
+      rooms[room].board = getInitialBoard();
+      rooms[room].currentPlayer = firstTurn;
+      rooms[room].moveHistory = [];
+      io.to(room).emit('bothReady');
+      io.to(room).emit('startGame', {
+        colorAssignments,
+        firstTurn,
+        board: rooms[room].board,
+        moveHistory: rooms[room].moveHistory
+      });
     }
   });
 
   socket.on('joinGame', ({ room, color }) => {
     currentRoom = room;
     socket.join(room);
+    // Send current board state if game is in progress
+    if (rooms[room] && rooms[room].inGame) {
+      io.to(socket.id).emit('syncBoard', {
+        board: rooms[room].board,
+        currentPlayer: rooms[room].currentPlayer,
+        moveHistory: rooms[room].moveHistory
+      });
+    }
   });
 
   socket.on('move', ({ room, from, to, move }) => {
+    if (!rooms[room] || !rooms[room].inGame) return;
+    // Apply move to server board
+    const board = rooms[room].board;
+    const piece = board[from.row][from.col];
+    board[to.row][to.col] = piece;
+    board[from.row][from.col] = null;
+    let becameKing = false;
+    if ((piece.color === 'red' && to.row === 0) || (piece.color === 'black' && to.row === 7)) {
+      if (!piece.king) {
+        piece.king = true;
+        becameKing = true;
+      }
+    }
+    if (move.jump) {
+      const { row: jr, col: jc } = move.jumped;
+      board[jr][jc] = null;
+      // Multi-jump logic is handled on client; server trusts move for now
+    }
+    // Record move in history
+    rooms[room].moveHistory.push(
+      `${capitalize(rooms[room].currentPlayer)}: (${from.row},${from.col}) → (${to.row},${to.col})${move.jump ? ' (jump)' : ''}${becameKing ? ' (king)' : ''}`
+    );
+    // Switch turn
+    rooms[room].currentPlayer = rooms[room].currentPlayer === 'red' ? 'black' : 'red';
+    // Broadcast move and new board state to both players
     socket.to(room).emit('opponentMove', { from, to, move });
+    io.to(room).emit('syncBoard', {
+      board: rooms[room].board,
+      currentPlayer: rooms[room].currentPlayer,
+      moveHistory: rooms[room].moveHistory
+    });
   });
 
   socket.on('resetGame', ({ room }) => {
+    if (!rooms[room]) return;
+    rooms[room].board = getInitialBoard();
+    rooms[room].currentPlayer = 'black';
+    rooms[room].moveHistory = [];
     io.to(room).emit('resetGame');
+    io.to(room).emit('syncBoard', {
+      board: rooms[room].board,
+      currentPlayer: rooms[room].currentPlayer,
+      moveHistory: rooms[room].moveHistory
+    });
   });
 
   socket.on('leaveRoom', ({ room }) => {
@@ -116,7 +205,6 @@ io.on('connection', (socket) => {
       delete rooms[room].colors[socket.id];
       delete rooms[room].roles[socket.id];
       broadcastRoomState(room);
-      // Only notify if not in game
       if (!rooms[room].inGame) {
         socket.to(room).emit('playerLeft', { role: leftRole });
       }
@@ -149,7 +237,6 @@ io.on('connection', (socket) => {
       delete rooms[currentRoom].colors[socket.id];
       delete rooms[currentRoom].roles[socket.id];
       broadcastRoomState(currentRoom);
-      // Only notify if not in game
       if (!rooms[currentRoom].inGame) {
         socket.to(currentRoom).emit('playerLeft', { role: leftRole });
       }
@@ -164,6 +251,10 @@ io.on('connection', (socket) => {
     }
   });
 });
+
+function capitalize(str) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {

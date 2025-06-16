@@ -1,10 +1,8 @@
-// --- Multiplayer Game Logic with Socket.IO ---
-
 const socket = io('https://multiplayer-checkers.onrender.com');
 
 const params = new URLSearchParams(window.location.search);
 const roomCode = params.get('room');
-const myColor = params.get('color'); // 'red' or 'black'
+let myColor = params.get('color'); // 'red' or 'black'
 
 const boardSize = 8;
 const boardDiv = document.getElementById('game-board');
@@ -13,27 +11,53 @@ const moveHistoryList = document.getElementById('move-history');
 const newGameBtn = document.getElementById('new-game-btn');
 const printBtn = document.getElementById('print-btn');
 
+// --- Chat elements ---
+const chatForm = document.getElementById('chat-form');
+const chatInput = document.getElementById('chat-input');
+const chatMessages = document.getElementById('chat-messages');
+
 let board = [];
 let currentPlayer = 'black'; // Black goes first by default
 let selected = null;
 let validMoves = [];
 let moveHistory = [];
 let isMyTurn = false;
+let gameStarted = false;
 
 // Join the game room
 socket.emit('joinGame', { room: roomCode, color: myColor });
 
-// Listen for turn assignment and color assignment
-socket.on('startGame', ({ firstTurn }) => {
+// Listen for startGame with color assignment and first turn
+socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveHistory: serverHistory }) => {
+  // Assign my color if server sends it
+  if (colorAssignments && socket.id in colorAssignments) {
+    myColor = colorAssignments[socket.id];
+  }
   currentPlayer = firstTurn || 'black';
   isMyTurn = (myColor === currentPlayer);
+  gameStarted = true;
+  if (serverBoard) board = JSON.parse(JSON.stringify(serverBoard));
+  if (serverHistory) moveHistory = [...serverHistory];
   renderBoard();
+  renderMoveHistory();
   updateStatus();
 });
 
-// Listen for opponent move
+// Sync board state from server
+socket.on('syncBoard', ({ board: serverBoard, currentPlayer: serverCurrent, moveHistory: serverHistory }) => {
+  if (serverBoard) board = JSON.parse(JSON.stringify(serverBoard));
+  if (serverCurrent) currentPlayer = serverCurrent;
+  if (serverHistory) moveHistory = [...serverHistory];
+  selected = null;
+  validMoves = [];
+  renderBoard();
+  renderMoveHistory();
+  updateStatus();
+});
+
+// Listen for opponent move (for legacy support, but syncBoard is authoritative)
 socket.on('opponentMove', ({ from, to, move }) => {
-  makeMove(from, to, move, false);
+  // No-op: syncBoard will update the board
   isMyTurn = true;
   updateStatus();
 });
@@ -113,6 +137,10 @@ function updateStatus() {
     statusDiv.textContent = "Spectator mode";
     return;
   }
+  if (!gameStarted) {
+    statusDiv.textContent = "Waiting for both players to be ready...";
+    return;
+  }
   if (isMyTurn) {
     statusDiv.textContent = `Your turn (${myColor})`;
   } else {
@@ -153,7 +181,7 @@ function hasAnyJumps(color) {
 
 // Handle square click
 function onSquareClick(e) {
-  if (!isMyTurn) return;
+  if (!isMyTurn || !gameStarted) return;
   const row = parseInt(e.currentTarget.dataset.row);
   const col = parseInt(e.currentTarget.dataset.col);
   const piece = board[row][col];
@@ -301,6 +329,30 @@ printBtn.onclick = () => {
 window.addEventListener('beforeunload', () => {
   socket.emit('leaveGame', { room: roomCode, color: myColor });
 });
+
+// --- Chat box logic ---
+if (chatForm && chatInput && chatMessages) {
+  chatForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const msg = chatInput.value.trim();
+    if (msg) {
+      socket.emit('chatMessage', { room: roomCode, msg });
+      appendChatMessage('You', msg);
+      chatInput.value = '';
+    }
+  });
+
+  socket.on('chatMessage', ({ sender, msg }) => {
+    appendChatMessage(sender, msg);
+  });
+
+  function appendChatMessage(sender, msg) {
+    const div = document.createElement('div');
+    div.innerHTML = `<strong>${sender}:</strong> ${msg}`;
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+}
 
 // Initialize game
 initBoard();
