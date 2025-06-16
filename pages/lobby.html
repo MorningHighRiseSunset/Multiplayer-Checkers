@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <meta charset="UTF-8">
+  <title>Checkers Lobby</title>
+  <link rel="stylesheet" href="../css/lobby.css">
+</head>
+<body>
+  <div id="floating-bg"></div>
+  <div id="lobby-container">
+    <h1>Checkers Lobby</h1>
+    <div id="leaderboards">
+      <div class="leaderboard">
+        <h2>🏆 Most Wins</h2>
+        <ul>
+          <li>W.I.P</li>
+        </ul>
+      </div>
+      <div class="leaderboard">
+        <h2>🔥 Highest Streak</h2>
+        <ul>
+          <li>W.I.P</li>
+        </ul>
+      </div>
+    </div>
+    <div id="actions">
+      <button id="create-btn">Create Game</button>
+      <div id="join-section">
+        <input id="room-input" placeholder="Enter game code" maxlength="12" />
+        <button id="join-btn">Join Game</button>
+      </div>
+      <div id="share-link" style="display:none;"></div>
+      <div id="lobby-status"></div>
+    </div>
+  </div>
+  <script src="../js/lobby.js"></script>
+</body>
+</html>

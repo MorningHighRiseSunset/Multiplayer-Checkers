@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <meta charset="UTF-8">
+  <title>Checkers Room Lobby</title>
+  <link rel="stylesheet" href="../css/room.css">
+</head>
+<body>
+  <div id="room-container">
+    <h1>Game Room</h1>
+    <div id="room-code"></div>
+    <div id="players">
+      <div class="player" id="player-red">
+        <div class="checker-sample red"></div>
+        <span>Red</span>
+        <button class="pick-btn" data-color="red">Pick</button>
+        <span class="status"></span>
+      </div>
+      <div class="player" id="player-black">
+        <div class="checker-sample black"></div>
+        <span>Black</span>
+        <button class="pick-btn" data-color="black">Pick</button>
+        <span class="status"></span>
+      </div>
+    </div>
+    <div id="ready-section">
+      <button id="ready-btn" disabled>Ready</button>
+      <button id="leave-btn">Leave</button>
+    </div>
+    <div id="room-status"></div>
+  </div>
+  <script src="../js/room.js"></script>
+</body>
+</html>

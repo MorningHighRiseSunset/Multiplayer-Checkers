@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <meta charset="UTF-8">
+  <title>Checkers Game</title>
+  <link rel="stylesheet" href="../css/game.css">
+</head>
+<body>
+  <h1>Checkers Game</h1>
+  <div id="controls">
+    <button id="new-game-btn">New Game</button>
+    <button id="print-btn">Print Moves</button>
+  </div>
+  <div id="game-board"></div>
+  <div id="game-status"></div>
+  <div id="move-history-container">
+    <h2>Move History</h2>
+    <ol id="move-history"></ol>
+  </div>
+  <script src="../js/game.js"></script>
+</body>
+</html>
