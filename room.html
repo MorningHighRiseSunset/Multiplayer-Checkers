@@ -6,6 +6,13 @@
   <link rel="stylesheet" href="/css/room.css">
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 </head>
+<div id="chat-container">
+  <div id="chat-messages"></div>
+  <form id="chat-form">
+    <input id="chat-input" type="text" placeholder="Type a message..." autocomplete="off" maxlength="200" />
+    <button type="submit">Send</button>
+  </form>
+</div>
 <body>
   <!-- Player status bar in top left -->
   <div id="player-status-bar">

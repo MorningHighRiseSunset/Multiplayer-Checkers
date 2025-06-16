@@ -16,6 +16,11 @@ const playerStatus = {
 const dotPlayer1 = document.getElementById('dot-player1');
 const dotPlayer2 = document.getElementById('dot-player2');
 
+// --- Chat elements ---
+const chatForm = document.getElementById('chat-form');
+const chatInput = document.getElementById('chat-input');
+const chatMessages = document.getElementById('chat-messages');
+
 let myRole = null;
 let myColor = null;
 let iAmReady = false;
@@ -52,13 +57,7 @@ socket.on('roomState', (state) => {
     roomStatus.textContent = "Waiting for another player to join...";
   }
 
-  // Only disable pick buttons for colors that are already picked
-  pickBtns.forEach(b => {
-    b.disabled = false;
-    b.textContent = "Pick";
-    playerStatus[b.dataset.color].textContent = "";
-  });
-
+  // Use state.colors to update pick buttons for both players
   let pickedColors = {};
   if (state.colors) {
     for (const [sockId, color] of Object.entries(state.colors)) {
@@ -66,18 +65,21 @@ socket.on('roomState', (state) => {
     }
   }
 
-  // Disable a color if it's already picked by anyone else
   pickBtns.forEach(b => {
     const color = b.dataset.color;
-    if (pickedColors[color] && (!myColor || myColor !== color)) {
+    if (pickedColors[color]) {
       b.disabled = true;
-      b.textContent = "Opponent";
-      playerStatus[color].textContent = "Opponent picked this!";
-    }
-    if (myColor === color) {
-      b.disabled = true;
-      b.textContent = "You";
-      playerStatus[color].textContent = "You picked this!";
+      if (state.colors[socket.id] === color) {
+        b.textContent = "You";
+        playerStatus[color].textContent = "You picked this!";
+      } else {
+        b.textContent = "Opponent";
+        playerStatus[color].textContent = "Opponent picked this!";
+      }
+    } else {
+      b.disabled = false;
+      b.textContent = "Pick";
+      playerStatus[color].textContent = "";
     }
   });
 
@@ -161,3 +163,27 @@ leaveBtn.onclick = () => {
 window.addEventListener('beforeunload', () => {
   socket.emit('leaveRoom', { room: roomCode });
 });
+
+// --- Chat box logic ---
+if (chatForm && chatInput && chatMessages) {
+  chatForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const msg = chatInput.value.trim();
+    if (msg) {
+      socket.emit('chatMessage', { room: roomCode, msg });
+      appendChatMessage('You', msg);
+      chatInput.value = '';
+    }
+  });
+
+  socket.on('chatMessage', ({ sender, msg }) => {
+    appendChatMessage(sender, msg);
+  });
+
+  function appendChatMessage(sender, msg) {
+    const div = document.createElement('div');
+    div.innerHTML = `<strong>${sender}:</strong> ${msg}`;
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+}
