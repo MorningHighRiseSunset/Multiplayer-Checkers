@@ -55,6 +55,8 @@ function getInitialBoard() {
 // --- Helper: Always check if both players are ready and have different colors, then start game ---
 function maybeStartGame(room) {
   if (!rooms[room]) return;
+  // Log the full state for debugging
+  console.log('[server.js] maybeStartGame: rooms[room] state:', JSON.stringify(rooms[room], null, 2));
   const readyIds = Object.keys(rooms[room].ready);
   if (
     readyIds.length === 2 &&
@@ -90,6 +92,8 @@ function maybeStartGame(room) {
       roles: rooms[room].roles
     });
     console.log('[server.js] maybeStartGame: startGame emitted to room', room, colorAssignments);
+  } else {
+    console.log('[server.js] maybeStartGame: Not ready to start. Ready IDs:', readyIds, 'Colors:', rooms[room].colors);
   }
 }
 
@@ -109,6 +113,7 @@ io.on('connection', (socket) => {
         currentPlayer: 'black',
         moveHistory: []
       };
+      console.log('[server.js] Room created:', roomCode);
     }
   });
 
@@ -126,6 +131,7 @@ io.on('connection', (socket) => {
         currentPlayer: 'black',
         moveHistory: []
       };
+      console.log('[server.js] Room auto-created on join:', roomCode);
     }
     const roleCount = Object.keys(rooms[roomCode].roles).length;
     myRole = roleCount === 0 ? 'Player 1' : 'Player 2';
@@ -133,6 +139,7 @@ io.on('connection', (socket) => {
     rooms[roomCode].players[socket.id] = null;
     broadcastRoomState(roomCode);
     socket.to(roomCode).emit('playerJoined', { role: myRole });
+    console.log('[server.js] joinRoom:', socket.id, 'as', myRole, 'in', roomCode);
   });
 
   socket.on('pickColor', ({ room, color }) => {
@@ -144,6 +151,7 @@ io.on('connection', (socket) => {
     if (pickedColors.length === 2 && pickedColors[0] !== pickedColors[1]) {
       io.to(room).emit('bothPicked');
     }
+    console.log('[server.js] pickColor:', socket.id, color, 'in', room);
   });
 
   socket.on('playerReady', ({ room, color }) => {
@@ -152,9 +160,9 @@ io.on('connection', (socket) => {
     socket.to(room).emit('opponentReady', { color });
 
     // Debug logging
-    console.log('playerReady:', socket.id, color, room);
-    console.log('Current ready:', rooms[room].ready);
-    console.log('Current colors:', rooms[room].colors);
+    console.log('[server.js] playerReady:', socket.id, color, room);
+    console.log('[server.js] Current ready:', rooms[room].ready);
+    console.log('[server.js] Current colors:', rooms[room].colors);
 
     // Use helper to check and start game if possible
     maybeStartGame(room);
@@ -193,6 +201,8 @@ io.on('connection', (socket) => {
         if (color) rooms[room].colors[socket.id] = color;
         if (role) rooms[room].roles[socket.id] = role;
       }
+      // Log the full state for debugging
+      console.log('[server.js] joinGame: rooms[room] state:', JSON.stringify(rooms[room], null, 2));
       if (rooms[room].inGame) {
         io.to(socket.id).emit('syncBoard', {
           board: rooms[room].board,
@@ -241,6 +251,7 @@ io.on('connection', (socket) => {
       currentPlayer: rooms[room].currentPlayer,
       moveHistory: rooms[room].moveHistory
     });
+    console.log('[server.js] move:', from, 'to', to, 'by', piece.color, 'in', room);
   });
 
   socket.on('resetGame', ({ room }) => {
@@ -254,6 +265,7 @@ io.on('connection', (socket) => {
       currentPlayer: rooms[room].currentPlayer,
       moveHistory: rooms[room].moveHistory
     });
+    console.log('[server.js] resetGame:', room);
   });
 
   socket.on('leaveRoom', ({ room }) => {
@@ -275,6 +287,7 @@ io.on('connection', (socket) => {
         Object.keys(rooms[room].roles).length === 0
       ) {
         delete rooms[room];
+        console.log('[server.js] Room deleted:', room);
       }
     }
   });
@@ -282,6 +295,7 @@ io.on('connection', (socket) => {
   socket.on('leaveGame', ({ room }) => {
     socket.leave(room);
     socket.to(room).emit('opponentLeft');
+    console.log('[server.js] leaveGame:', socket.id, 'left', room);
   });
 
   socket.on('chatMessage', ({ room, msg }) => {
@@ -290,6 +304,7 @@ io.on('connection', (socket) => {
       sender = rooms[room].roles[socket.id];
     }
     socket.to(room).emit('chatMessage', { sender, msg });
+    console.log('[server.js] chatMessage:', sender, msg, 'in', room);
   });
 
   socket.on('disconnect', () => {
@@ -310,8 +325,10 @@ io.on('connection', (socket) => {
         Object.keys(rooms[currentRoom].roles).length === 0
       ) {
         delete rooms[currentRoom];
+        console.log('[server.js] Room deleted on disconnect:', currentRoom);
       }
     }
+    console.log('[server.js] disconnect:', socket.id);
   });
 });
 
