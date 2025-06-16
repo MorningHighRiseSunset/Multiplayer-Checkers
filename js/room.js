@@ -108,6 +108,7 @@ socket.on('startGame', ({ colorAssignments, firstTurn, roles }) => {
   console.log('[room.js] Assigned color:', myAssignedColor, 'Assigned role:', myRole);
   // Double-check before redirect
   if (myAssignedColor && myRole) {
+    console.log('[room.js] Redirecting to game.html with room:', roomCode);
     window.location.href = `game.html?room=${roomCode}`;
   } else {
     statusDiv.textContent = "Error: Could not assign color/role. Please rejoin the room.";
@@ -130,7 +131,14 @@ socket.on('bothPicked', () => {
 // Listen for both players ready
 socket.on('bothReady', () => {
   console.log('[room.js] bothReady event');
-  statusDiv.textContent = "Both players are ready. Starting game...";
+  statusDiv.textContent = "Both players are ready. Waiting for server to start the game...";
+  // Add a log in case startGame doesn't arrive soon
+  setTimeout(() => {
+    if (!sessionStorage.getItem('myAssignedColor') || !sessionStorage.getItem('myRole')) {
+      console.warn('[room.js] Warning: Still waiting for startGame event after 3 seconds.');
+      statusDiv.textContent = "Still waiting for server to start the game... If this takes too long, try reloading.";
+    }
+  }, 3000);
 });
 
 // Listen for player joined/left
@@ -195,3 +203,10 @@ if (chatForm && chatInput && chatMessages) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 }
+
+// Extra: log if the page is unloaded before redirecting
+window.addEventListener('beforeunload', () => {
+  if (!sessionStorage.getItem('myAssignedColor') || !sessionStorage.getItem('myRole')) {
+    console.warn('[room.js] Unloading room page before startGame event. This may cause issues.');
+  }
+});
