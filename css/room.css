@@ -164,3 +164,19 @@ h1 {
     gap: 12px;
   }
 }
+
+.status-dot {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #aaa;
+  margin-right: 6px;
+  vertical-align: middle;
+  border: 2px solid #222;
+  box-shadow: 0 0 2px #0008;
+  transition: background 0.2s;
+}
+.status-dot.active {
+  background: #2ecc40; /* green */
+}

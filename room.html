@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <meta charset="UTF-8">
   <title>Checkers Room Lobby</title>
   <link rel="stylesheet" href="/css/room.css">
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 </head>
 <body>
   <div id="room-container">
@@ -12,12 +12,14 @@
     <div id="room-code"></div>
     <div id="players">
       <div class="player" id="player-red">
+        <span class="status-dot" id="dot-red"></span>
         <div class="checker-sample red"></div>
         <span>Red</span>
         <button class="pick-btn" data-color="red">Pick</button>
         <span class="status"></span>
       </div>
       <div class="player" id="player-black">
+        <span class="status-dot" id="dot-black"></span>
         <div class="checker-sample black"></div>
         <span>Black</span>
         <button class="pick-btn" data-color="black">Pick</button>
