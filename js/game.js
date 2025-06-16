@@ -8,7 +8,6 @@ const boardSize = 8;
 const boardDiv = document.getElementById('game-board');
 const statusDiv = document.getElementById('game-status');
 const moveHistoryList = document.getElementById('move-history');
-const newGameBtn = document.getElementById('new-game-btn');
 const printBtn = document.getElementById('print-btn');
 
 // --- Chat elements ---
@@ -25,13 +24,16 @@ let isMyTurn = false;
 let gameStarted = false;
 
 // Join the game room
+console.log('[game.js] Emitting joinGame:', { room: roomCode, color: myColor });
 socket.emit('joinGame', { room: roomCode, color: myColor });
 
 // Listen for startGame with color assignment and first turn
 socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveHistory: serverHistory }) => {
+  console.log('[game.js] Received startGame:', { colorAssignments, firstTurn, serverBoard, serverHistory });
   // Assign my color if server sends it
   if (colorAssignments && socket.id in colorAssignments) {
     myColor = colorAssignments[socket.id];
+    console.log('[game.js] My assigned color:', myColor);
   }
   currentPlayer = firstTurn || 'black';
   isMyTurn = (myColor === currentPlayer);
@@ -45,11 +47,14 @@ socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveH
 
 // Sync board state from server
 socket.on('syncBoard', ({ board: serverBoard, currentPlayer: serverCurrent, moveHistory: serverHistory }) => {
+  console.log('[game.js] Received syncBoard:', { serverBoard, serverCurrent, serverHistory });
   if (serverBoard) board = JSON.parse(JSON.stringify(serverBoard));
   if (serverCurrent) currentPlayer = serverCurrent;
   if (serverHistory) moveHistory = [...serverHistory];
   selected = null;
   validMoves = [];
+  gameStarted = true;
+  isMyTurn = (myColor === currentPlayer);
   renderBoard();
   renderMoveHistory();
   updateStatus();
@@ -57,7 +62,7 @@ socket.on('syncBoard', ({ board: serverBoard, currentPlayer: serverCurrent, move
 
 // Listen for opponent move (for legacy support, but syncBoard is authoritative)
 socket.on('opponentMove', ({ from, to, move }) => {
-  // No-op: syncBoard will update the board
+  console.log('[game.js] Received opponentMove:', { from, to, move });
   isMyTurn = true;
   updateStatus();
 });
@@ -70,6 +75,7 @@ socket.on('opponentLeft', () => {
 
 // Listen for game reset
 socket.on('resetGame', () => {
+  console.log('[game.js] Received resetGame');
   initBoard();
 });
 
@@ -98,7 +104,6 @@ function initBoard() {
   updateStatus();
 }
 
-// Render the board
 function renderBoard() {
   boardDiv.innerHTML = '';
   boardDiv.style.display = 'grid';
@@ -146,6 +151,7 @@ function updateStatus() {
   } else {
     statusDiv.textContent = `Opponent's turn (${currentPlayer})`;
   }
+  console.log('[game.js] updateStatus:', { myColor, currentPlayer, isMyTurn, gameStarted });
 }
 
 // Get valid moves for a piece
@@ -181,7 +187,10 @@ function hasAnyJumps(color) {
 
 // Handle square click
 function onSquareClick(e) {
-  if (!isMyTurn || !gameStarted) return;
+  if (!isMyTurn || !gameStarted) {
+    console.log('[game.js] Not your turn or game not started', { isMyTurn, gameStarted });
+    return;
+  }
   const row = parseInt(e.currentTarget.dataset.row);
   const col = parseInt(e.currentTarget.dataset.col);
   const piece = board[row][col];
@@ -190,6 +199,7 @@ function onSquareClick(e) {
   if (piece && piece.color === myColor && piece.color === currentPlayer) {
     selected = { row, col };
     validMoves = getValidMoves(row, col, hasAnyJumps(currentPlayer));
+    console.log('[game.js] Selected piece:', { row, col, validMoves });
     renderBoard();
     return;
   }
@@ -239,6 +249,7 @@ function makeMove(from, to, move, sendToServer) {
 
   // Send move to server if it's my move
   if (sendToServer) {
+    console.log('[game.js] Sending move to server:', { from, to, move });
     socket.emit('move', {
       room: roomCode,
       from,
@@ -289,12 +300,6 @@ function isGameOver() {
   }
   return !hasPiece || !hasMove;
 }
-
-// New Game button (optional: could emit a reset event)
-newGameBtn.onclick = () => {
-  initBoard();
-  socket.emit('resetGame', { room: roomCode });
-};
 
 // Print button (prints move history)
 printBtn.onclick = () => {
