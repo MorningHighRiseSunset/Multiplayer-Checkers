@@ -52,6 +52,47 @@ function getInitialBoard() {
   return board;
 }
 
+// --- Helper: Always check if both players are ready and have different colors, then start game ---
+function maybeStartGame(room) {
+  if (!rooms[room]) return;
+  const readyIds = Object.keys(rooms[room].ready);
+  if (
+    readyIds.length === 2 &&
+    rooms[room].colors[readyIds[0]] &&
+    rooms[room].colors[readyIds[1]] &&
+    rooms[room].colors[readyIds[0]] !== rooms[room].colors[readyIds[1]]
+  ) {
+    const colorAssignments = {};
+    const roles = rooms[room].roles;
+    let player1Id = null, player2Id = null;
+    for (const [sockId, roleName] of Object.entries(roles)) {
+      if (roleName === 'Player 1') player1Id = sockId;
+      if (roleName === 'Player 2') player2Id = sockId;
+    }
+    if (player1Id && player2Id) {
+      colorAssignments[player1Id] = rooms[room].colors[player1Id];
+      colorAssignments[player2Id] = rooms[room].colors[player2Id];
+    }
+    let firstTurn = 'black';
+    // Only set up the board if not already inGame
+    if (!rooms[room].inGame) {
+      rooms[room].inGame = true;
+      rooms[room].board = getInitialBoard();
+      rooms[room].currentPlayer = firstTurn;
+      rooms[room].moveHistory = [];
+    }
+    io.to(room).emit('bothReady');
+    io.to(room).emit('startGame', {
+      colorAssignments,
+      firstTurn,
+      board: rooms[room].board,
+      moveHistory: rooms[room].moveHistory,
+      roles: rooms[room].roles
+    });
+    console.log('[server.js] maybeStartGame: startGame emitted to room', room, colorAssignments);
+  }
+}
+
 io.on('connection', (socket) => {
   let currentRoom = null;
   let myRole = null;
@@ -115,48 +156,8 @@ io.on('connection', (socket) => {
     console.log('Current ready:', rooms[room].ready);
     console.log('Current colors:', rooms[room].colors);
 
-    // Only start if both players are ready AND both picked a color AND colors are different
-    const readyIds = Object.keys(rooms[room].ready);
-    if (readyIds.length === 2) {
-      const colors = rooms[room].colors;
-      const colorVals = readyIds.map(id => colors[id]);
-      if (
-        colorVals[0] &&
-        colorVals[1] &&
-        colorVals[0] !== colorVals[1]
-      ) {
-        const colorAssignments = {};
-        const roles = rooms[room].roles;
-        let player1Id = null, player2Id = null;
-        for (const [sockId, role] of Object.entries(roles)) {
-          if (role === 'Player 1') player1Id = sockId;
-          if (role === 'Player 2') player2Id = sockId;
-        }
-        if (player1Id && player2Id) {
-          colorAssignments[player1Id] = colors[player1Id];
-          colorAssignments[player2Id] = colors[player2Id];
-        }
-        let firstTurn = 'black';
-        rooms[room].inGame = true;
-        rooms[room].board = getInitialBoard();
-        rooms[room].currentPlayer = firstTurn;
-        rooms[room].moveHistory = [];
-        io.to(room).emit('bothReady');
-        io.to(room).emit('startGame', {
-          colorAssignments,
-          firstTurn,
-          board: rooms[room].board,
-          moveHistory: rooms[room].moveHistory,
-          roles: rooms[room].roles
-        });
-        // Debug logging
-        console.log('startGame emitted to room', room, colorAssignments);
-      } else {
-        // If colors are not both picked and different, do NOT start the game
-        io.to(room).emit('roomStatus', { msg: "Both players must pick different colors!" });
-        console.log('Both players must pick different colors!');
-      }
-    }
+    // Use helper to check and start game if possible
+    maybeStartGame(room);
   });
 
   // When a player joins the game, allow them to re-register their color and role if provided (for page reloads)
@@ -199,45 +200,8 @@ io.on('connection', (socket) => {
           moveHistory: rooms[room].moveHistory
         });
       }
-
-      // --- ADDED: Check if both players are ready and have different colors, emit startGame if so ---
-      const readyIds = Object.keys(rooms[room].ready);
-      if (
-        readyIds.length === 2 &&
-        rooms[room].colors[readyIds[0]] &&
-        rooms[room].colors[readyIds[1]] &&
-        rooms[room].colors[readyIds[0]] !== rooms[room].colors[readyIds[1]]
-      ) {
-        const colorAssignments = {};
-        const roles = rooms[room].roles;
-        let player1Id = null, player2Id = null;
-        for (const [sockId, roleName] of Object.entries(roles)) {
-          if (roleName === 'Player 1') player1Id = sockId;
-          if (roleName === 'Player 2') player2Id = sockId;
-        }
-        if (player1Id && player2Id) {
-          colorAssignments[player1Id] = rooms[room].colors[player1Id];
-          colorAssignments[player2Id] = rooms[room].colors[player2Id];
-        }
-        let firstTurn = 'black';
-        // Only set up the board if not already inGame
-        if (!rooms[room].inGame) {
-          rooms[room].inGame = true;
-          rooms[room].board = getInitialBoard();
-          rooms[room].currentPlayer = firstTurn;
-          rooms[room].moveHistory = [];
-        }
-        io.to(room).emit('bothReady');
-        io.to(room).emit('startGame', {
-          colorAssignments,
-          firstTurn,
-          board: rooms[room].board,
-          moveHistory: rooms[room].moveHistory,
-          roles: rooms[room].roles
-        });
-        console.log('[server.js] joinGame: startGame emitted to room', room, colorAssignments);
-      }
-      // --- END ADDED BLOCK ---
+      // Use helper to check and start game if possible
+      maybeStartGame(room);
     }
   });
 
