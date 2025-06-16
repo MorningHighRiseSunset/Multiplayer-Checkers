@@ -9,6 +9,7 @@ const io = new Server(server, {
 });
 
 const rooms = {};
+const roomTimeouts = {}; // <-- Add this for grace period
 
 app.get("/", (req, res) => {
   res.send("Checkers multiplayer server is running!");
@@ -52,10 +53,8 @@ function getInitialBoard() {
   return board;
 }
 
-// --- Helper: Always check if both players are ready and have different colors, then start game ---
 function maybeStartGame(room) {
   if (!rooms[room]) return;
-  // Log the full state for debugging
   console.log('[server.js] maybeStartGame: rooms[room] state:', JSON.stringify(rooms[room], null, 2));
   const readyIds = Object.keys(rooms[room].ready);
   if (
@@ -76,7 +75,6 @@ function maybeStartGame(room) {
       colorAssignments[player2Id] = rooms[room].colors[player2Id];
     }
     let firstTurn = 'black';
-    // Only set up the board if not already inGame
     if (!rooms[room].inGame) {
       rooms[room].inGame = true;
       rooms[room].board = getInitialBoard();
@@ -133,6 +131,12 @@ io.on('connection', (socket) => {
       };
       console.log('[server.js] Room auto-created on join:', roomCode);
     }
+    // Clear any pending room deletion timeout
+    if (roomTimeouts[roomCode]) {
+      clearTimeout(roomTimeouts[roomCode]);
+      delete roomTimeouts[roomCode];
+      console.log('[server.js] Room deletion timeout cleared for', roomCode);
+    }
     const roleCount = Object.keys(rooms[roomCode].roles).length;
     myRole = roleCount === 0 ? 'Player 1' : 'Player 2';
     rooms[roomCode].roles[socket.id] = myRole;
@@ -158,22 +162,16 @@ io.on('connection', (socket) => {
     if (!rooms[room]) return;
     rooms[room].ready[socket.id] = true;
     socket.to(room).emit('opponentReady', { color });
-
-    // Debug logging
     console.log('[server.js] playerReady:', socket.id, color, room);
     console.log('[server.js] Current ready:', rooms[room].ready);
     console.log('[server.js] Current colors:', rooms[room].colors);
-
-    // Use helper to check and start game if possible
     maybeStartGame(room);
   });
 
-  // When a player joins the game, allow them to re-register their color and role if provided (for page reloads)
   socket.on('joinGame', ({ room, color, role }) => {
     currentRoom = room;
     socket.join(room);
     if (rooms[room]) {
-      // Find any old socket ID with the same color or role and transfer their state
       let oldId = null;
       for (const [sockId, col] of Object.entries(rooms[room].colors)) {
         if ((col === color || rooms[room].roles[sockId] === role) && sockId !== socket.id) {
@@ -182,7 +180,6 @@ io.on('connection', (socket) => {
         }
       }
       if (oldId) {
-        // Transfer role, color, and ready state to new socket ID
         if (rooms[room].roles[oldId]) {
           rooms[room].roles[socket.id] = rooms[room].roles[oldId];
           delete rooms[room].roles[oldId];
@@ -197,11 +194,9 @@ io.on('connection', (socket) => {
         }
         console.log('[server.js] joinGame: transferred state from', oldId, 'to', socket.id, 'in room', room);
       } else {
-        // If not found, just set what we know
         if (color) rooms[room].colors[socket.id] = color;
         if (role) rooms[room].roles[socket.id] = role;
       }
-      // Log the full state for debugging
       console.log('[server.js] joinGame: rooms[room] state:', JSON.stringify(rooms[room], null, 2));
       if (rooms[room].inGame) {
         io.to(socket.id).emit('syncBoard', {
@@ -210,7 +205,6 @@ io.on('connection', (socket) => {
           moveHistory: rooms[room].moveHistory
         });
       }
-      // Use helper to check and start game if possible
       maybeStartGame(room);
     }
   });
@@ -223,7 +217,6 @@ io.on('connection', (socket) => {
       console.log('[server.js] Invalid move: no piece at', from);
       return;
     }
-    // Only allow moves for the current player
     if (piece.color !== rooms[room].currentPlayer) {
       console.log('[server.js] Invalid move: not', rooms[room].currentPlayer, 'turn');
       return;
@@ -244,7 +237,6 @@ io.on('connection', (socket) => {
     rooms[room].moveHistory.push(
       `${capitalize(rooms[room].currentPlayer)}: (${from.row},${from.col}) → (${to.row},${to.col})${move.jump ? ' (jump)' : ''}${becameKing ? ' (king)' : ''}`
     );
-    // Switch turn
     rooms[room].currentPlayer = rooms[room].currentPlayer === 'red' ? 'black' : 'red';
     io.to(room).emit('syncBoard', {
       board: rooms[room].board,
@@ -286,8 +278,12 @@ io.on('connection', (socket) => {
         Object.keys(rooms[room].colors).length === 0 &&
         Object.keys(rooms[room].roles).length === 0
       ) {
-        delete rooms[room];
-        console.log('[server.js] Room deleted:', room);
+        if (roomTimeouts[room]) clearTimeout(roomTimeouts[room]);
+        roomTimeouts[room] = setTimeout(() => {
+          delete rooms[room];
+          delete roomTimeouts[room];
+          console.log('[server.js] Room deleted (leaveRoom, after grace period):', room);
+        }, 10000);
       }
     }
   });
@@ -324,8 +320,12 @@ io.on('connection', (socket) => {
         Object.keys(rooms[currentRoom].colors).length === 0 &&
         Object.keys(rooms[currentRoom].roles).length === 0
       ) {
-        delete rooms[currentRoom];
-        console.log('[server.js] Room deleted on disconnect:', currentRoom);
+        if (roomTimeouts[currentRoom]) clearTimeout(roomTimeouts[currentRoom]);
+        roomTimeouts[currentRoom] = setTimeout(() => {
+          delete rooms[currentRoom];
+          delete roomTimeouts[currentRoom];
+          console.log('[server.js] Room deleted on disconnect (after grace period):', currentRoom);
+        }, 10000);
       }
     }
     console.log('[server.js] disconnect:', socket.id);
