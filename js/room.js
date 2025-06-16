@@ -9,6 +9,7 @@ let myRole = null;
 
 const colorButtons = document.querySelectorAll('.color-btn');
 const readyBtn = document.getElementById('ready-btn');
+const leaveBtn = document.getElementById('leave-btn');
 const statusDiv = document.getElementById('room-status');
 const playersDiv = document.getElementById('players-list');
 
@@ -31,6 +32,7 @@ socket.on('colorPicked', ({ color }) => {
 
 // Listen for room state updates
 socket.on('roomState', ({ roles, colors }) => {
+  if (!playersDiv) return;
   playersDiv.innerHTML = '';
   for (const [sockId, role] of Object.entries(roles)) {
     const color = colors[sockId] || 'not picked';
@@ -51,16 +53,23 @@ readyBtn.onclick = () => {
   statusDiv.textContent = "Waiting for other player...";
 };
 
+// Leave button
+leaveBtn.onclick = () => {
+  socket.emit('leaveRoom', { room: roomCode });
+  // Optionally clear sessionStorage
+  sessionStorage.removeItem('myAssignedColor');
+  sessionStorage.removeItem('myRole');
+  sessionStorage.removeItem('startFirstTurn');
+  window.location.href = 'lobby.html';
+};
+
 // Listen for both players ready and color assignments
 socket.on('startGame', ({ colorAssignments, firstTurn, roles }) => {
-  // Assign my color based on socket id
   myAssignedColor = colorAssignments[socket.id];
   myRole = roles[socket.id];
-  // Store in sessionStorage for game.js to use after reload
   sessionStorage.setItem('myAssignedColor', myAssignedColor);
   sessionStorage.setItem('myRole', myRole);
   sessionStorage.setItem('startFirstTurn', firstTurn);
-  // Navigate to game.html (no color in URL, use sessionStorage)
   window.location.href = `game.html?room=${roomCode}`;
 });
 
