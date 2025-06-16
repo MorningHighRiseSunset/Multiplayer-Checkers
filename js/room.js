@@ -20,6 +20,7 @@ colorButtons.forEach(btn => {
     colorButtons.forEach(b => b.disabled = true);
     btn.classList.add('selected');
     statusDiv.textContent = `You picked ${myColorPick}`;
+    readyBtn.disabled = false; // Enable Ready button after picking color
   };
 });
 
