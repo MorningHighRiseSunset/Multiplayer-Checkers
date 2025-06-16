@@ -210,3 +210,17 @@ h1 {
 #chat-form button:hover {
   background: #8d652c;
 }
+
+.profile-pic-emoji {
+  font-size: 28px;
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  text-align: center;
+  line-height: 28px;
+  border-radius: 50%;
+  border: 2px solid #bbb;
+  background: #eee;
+  margin-right: 2px;
+  vertical-align: middle;
+}
