@@ -7,7 +7,7 @@
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 </head>
 <body>
-  <!-- Player status bar in top left -->
+  <!-- Player status bar at the top, not overlapping -->
   <div id="player-status-bar">
     <div class="player-status" id="status-player1">
       <span class="profile-pic-emoji" role="img" aria-label="Player 1">👤</span>
@@ -20,37 +20,39 @@
       <span class="player-label">Player 2</span>
     </div>
   </div>
-  <div id="room-container">
-    <h1>Game Room</h1>
-    <div id="room-code"></div>
-    <div id="players">
-      <div class="player" id="player-red">
-        <div class="checker-sample red"></div>
-        <span>Red</span>
-        <button class="color-btn" data-color="red">Pick</button>
-        <span class="status"></span>
+  <main>
+    <div id="room-container">
+      <h1>Game Room</h1>
+      <div id="room-code"></div>
+      <div id="players">
+        <div class="player" id="player-red">
+          <div class="checker-sample red"></div>
+          <span>Red</span>
+          <button class="color-btn" data-color="red">Pick</button>
+          <span class="status"></span>
+        </div>
+        <div class="player" id="player-black">
+          <div class="checker-sample black"></div>
+          <span>Black</span>
+          <button class="color-btn" data-color="black">Pick</button>
+          <span class="status"></span>
+        </div>
       </div>
-      <div class="player" id="player-black">
-        <div class="checker-sample black"></div>
-        <span>Black</span>
-        <button class="color-btn" data-color="black">Pick</button>
-        <span class="status"></span>
+      <div id="ready-section">
+        <button id="ready-btn" disabled>Ready</button>
+        <button id="leave-btn">Leave</button>
       </div>
+      <div id="room-status"></div>
+      <ul id="players-list"></ul>
     </div>
-    <div id="ready-section">
-      <button id="ready-btn" disabled>Ready</button>
-      <button id="leave-btn">Leave</button>
+    <div id="chat-container">
+      <div id="chat-messages"></div>
+      <form id="chat-form">
+        <input id="chat-input" type="text" placeholder="Type a message..." autocomplete="off" maxlength="200" />
+        <button type="submit">Send</button>
+      </form>
     </div>
-    <div id="room-status"></div>
-    <ul id="players-list"></ul>
-  </div>
-  <div id="chat-container">
-    <div id="chat-messages"></div>
-    <form id="chat-form">
-      <input id="chat-input" type="text" placeholder="Type a message..." autocomplete="off" maxlength="200" />
-      <button type="submit">Send</button>
-    </form>
-  </div>
+  </main>
   <script src="/js/room.js"></script>
 </body>
 </html>
