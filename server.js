@@ -9,7 +9,7 @@ const io = new Server(server, {
 });
 
 const rooms = {};
-const roomTimeouts = {}; // <-- Add this for grace period
+const roomTimeouts = {}; // Grace period for room deletion
 
 app.get("/", (req, res) => {
   res.send("Checkers multiplayer server is running!");
@@ -264,26 +264,23 @@ io.on('connection', (socket) => {
     socket.leave(room);
     if (rooms[room]) {
       const leftRole = rooms[room].roles[socket.id];
-      delete rooms[room].players[socket.id];
-      delete rooms[room].ready[socket.id];
-      delete rooms[room].colors[socket.id];
-      delete rooms[room].roles[socket.id];
+      // DO NOT delete socket state here!
       broadcastRoomState(room);
       if (!rooms[room].inGame) {
         socket.to(room).emit('playerLeft', { role: leftRole });
       }
       if (
-        Object.keys(rooms[room].players).length === 0 &&
-        Object.keys(rooms[room].ready).length === 0 &&
-        Object.keys(rooms[room].colors).length === 0 &&
-        Object.keys(rooms[room].roles).length === 0
+        Object.keys(rooms[room].players).length === 1 &&
+        Object.keys(rooms[room].ready).length === 1 &&
+        Object.keys(rooms[room].colors).length === 1 &&
+        Object.keys(rooms[room].roles).length === 1
       ) {
         if (roomTimeouts[room]) clearTimeout(roomTimeouts[room]);
         roomTimeouts[room] = setTimeout(() => {
           delete rooms[room];
           delete roomTimeouts[room];
           console.log('[server.js] Room deleted (leaveRoom, after grace period):', room);
-        }, 10000);
+        }, 15000); // 15 seconds
       }
     }
   });
@@ -306,26 +303,23 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     if (currentRoom && rooms[currentRoom]) {
       const leftRole = rooms[currentRoom].roles[socket.id];
-      delete rooms[currentRoom].players[socket.id];
-      delete rooms[currentRoom].ready[socket.id];
-      delete rooms[currentRoom].colors[socket.id];
-      delete rooms[currentRoom].roles[socket.id];
+      // DO NOT delete socket state here!
       broadcastRoomState(currentRoom);
       if (!rooms[currentRoom].inGame) {
         socket.to(currentRoom).emit('playerLeft', { role: leftRole });
       }
       if (
-        Object.keys(rooms[currentRoom].players).length === 0 &&
-        Object.keys(rooms[currentRoom].ready).length === 0 &&
-        Object.keys(rooms[currentRoom].colors).length === 0 &&
-        Object.keys(rooms[currentRoom].roles).length === 0
+        Object.keys(rooms[currentRoom].players).length === 1 &&
+        Object.keys(rooms[currentRoom].ready).length === 1 &&
+        Object.keys(rooms[currentRoom].colors).length === 1 &&
+        Object.keys(rooms[currentRoom].roles).length === 1
       ) {
         if (roomTimeouts[currentRoom]) clearTimeout(roomTimeouts[currentRoom]);
         roomTimeouts[currentRoom] = setTimeout(() => {
           delete rooms[currentRoom];
           delete roomTimeouts[currentRoom];
           console.log('[server.js] Room deleted on disconnect (after grace period):', currentRoom);
-        }, 10000);
+        }, 15000); // 15 seconds
       }
     }
     console.log('[server.js] disconnect:', socket.id);
