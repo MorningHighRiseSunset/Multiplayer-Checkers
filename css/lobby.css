@@ -220,12 +220,83 @@ h1 {
 
 /* Responsive */
 @media (max-width: 600px) {
+  html {
+    font-size: 16px;
+  }
+  body {
+    overflow: auto;
+  }
   #lobby-container {
-    max-width: 98vw;
-    padding: 18px 2vw 16px 2vw;
+    max-width: 100vw;
+    width: 98vw;
+    padding: 14vw 2vw 8vw 2vw;
+    margin: 12vw auto 0 auto;
+    border-radius: 10px;
+    box-sizing: border-box;
+  }
+  h1 {
+    font-size: 1.3em;
+    margin-bottom: 16px;
   }
   #leaderboards {
     flex-direction: column;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .leaderboard {
+    min-width: unset;
+    padding: 10px 6vw;
+    font-size: 0.98em;
+  }
+  .leaderboard h2 {
+    font-size: 1em;
+    margin-bottom: 6px;
+  }
+  .leaderboard ul {
+    font-size: 0.98em;
+  }
+  #actions {
     gap: 12px;
+  }
+  #create-btn, #join-btn {
+    width: 100%;
+    font-size: 1em;
+    padding: 10px 0;
+  }
+  #join-section {
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    align-items: stretch;
+  }
+  #room-input {
+    width: 100%;
+    font-size: 1em;
+    padding: 10px 8px;
+  }
+  #share-link {
+    font-size: 0.95em;
+    padding: 7px 6px;
+    margin-top: 8px;
+  }
+  #lobby-status {
+    font-size: 0.98em;
+    margin-top: 6px;
+  }
+  .floating-tile, .floating-checker {
+    /* Reduce background element size for mobile */
+    width: 22px !important;
+    height: 22px !important;
+  }
+}
+
+/* Extra small devices */
+@media (max-width: 400px) {
+  #lobby-container {
+    padding: 8vw 1vw 6vw 1vw;
+    margin-top: 6vw;
+  }
+  h1 {
+    font-size: 1.1em;
   }
 }

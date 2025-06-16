@@ -176,6 +176,12 @@ function renderBoard() {
       }
 
       square.addEventListener('click', onSquareClick);
+      // Add touch support for mobile
+      square.addEventListener('touchend', function(e) {
+        e.preventDefault(); // Prevents simulated mouse events
+        onSquareClick({ currentTarget: square });
+      }, { passive: false });
+
       boardDiv.appendChild(square);
     }
   }
