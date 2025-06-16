@@ -118,10 +118,18 @@ io.on('connection', (socket) => {
     // If both players are ready, start the game and send color assignments and board state
     if (Object.keys(rooms[room].ready).length === 2) {
       const colorAssignments = {};
-      for (const [sockId, pickedColor] of Object.entries(rooms[room].colors)) {
-        colorAssignments[sockId] = pickedColor;
+      const roles = rooms[room].roles;
+      const colors = rooms[room].colors;
+      let player1Id = null, player2Id = null;
+      for (const [sockId, role] of Object.entries(roles)) {
+        if (role === 'Player 1') player1Id = sockId;
+        if (role === 'Player 2') player2Id = sockId;
       }
-      let firstTurn = 'black';
+      if (player1Id && player2Id) {
+        colorAssignments[player1Id] = colors[player1Id];
+        colorAssignments[player2Id] = colors[player2Id];
+      }
+      let firstTurn = 'black'; // Black always goes first in checkers
       rooms[room].inGame = true;
       rooms[room].board = getInitialBoard();
       rooms[room].currentPlayer = firstTurn;
@@ -131,7 +139,8 @@ io.on('connection', (socket) => {
         colorAssignments,
         firstTurn,
         board: rooms[room].board,
-        moveHistory: rooms[room].moveHistory
+        moveHistory: rooms[room].moveHistory,
+        roles: rooms[room].roles
       });
     }
   });
@@ -225,7 +234,10 @@ io.on('connection', (socket) => {
   });
 
   socket.on('chatMessage', ({ room, msg }) => {
-    const sender = (rooms[room] && rooms[room].roles && rooms[room].roles[socket.id]) || 'Player';
+    let sender = 'Player';
+    if (rooms[room] && rooms[room].roles && rooms[room].roles[socket.id]) {
+      sender = rooms[room].roles[socket.id];
+    }
     socket.to(room).emit('chatMessage', { sender, msg });
   });
 

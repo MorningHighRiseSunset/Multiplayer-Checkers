@@ -22,18 +22,28 @@ let validMoves = [];
 let moveHistory = [];
 let isMyTurn = false;
 let gameStarted = false;
+let myRole = null;
+
+// Restore initial board and move history if coming from lobby
+const startBoard = sessionStorage.getItem('startBoard');
+const startMoveHistory = sessionStorage.getItem('startMoveHistory');
+const startFirstTurn = sessionStorage.getItem('startFirstTurn');
 
 // Join the game room
 console.log('[game.js] Emitting joinGame:', { room: roomCode, color: myColor });
 socket.emit('joinGame', { room: roomCode, color: myColor });
 
 // Listen for startGame with color assignment and first turn
-socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveHistory: serverHistory }) => {
-  console.log('[game.js] Received startGame:', { colorAssignments, firstTurn, serverBoard, serverHistory });
+socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveHistory: serverHistory, roles }) => {
+  console.log('[game.js] Received startGame:', { colorAssignments, firstTurn, serverBoard, serverHistory, roles });
   // Assign my color if server sends it
   if (colorAssignments && socket.id in colorAssignments) {
     myColor = colorAssignments[socket.id];
     console.log('[game.js] My assigned color:', myColor);
+  }
+  if (roles && roles[socket.id]) {
+    myRole = roles[socket.id];
+    sessionStorage.setItem('myRole', myRole);
   }
   currentPlayer = firstTurn || 'black';
   isMyTurn = (myColor === currentPlayer);
@@ -104,11 +114,33 @@ function initBoard() {
   updateStatus();
 }
 
+// If coming from lobby, use the board and move history from sessionStorage
+if (startBoard) {
+  board = JSON.parse(startBoard);
+  moveHistory = startMoveHistory ? JSON.parse(startMoveHistory) : [];
+  currentPlayer = startFirstTurn || 'black';
+  gameStarted = true;
+  isMyTurn = (myColor === currentPlayer);
+  renderBoard();
+  renderMoveHistory();
+  updateStatus();
+  sessionStorage.removeItem('startBoard');
+  sessionStorage.removeItem('startMoveHistory');
+  sessionStorage.removeItem('startFirstTurn');
+  myRole = sessionStorage.getItem('myRole') || null;
+}
+
+// Render the board (red always on bottom, black always on top)
 function renderBoard() {
   boardDiv.innerHTML = '';
   boardDiv.style.display = 'grid';
   boardDiv.style.gridTemplate = `repeat(${boardSize}, 50px) / repeat(${boardSize}, 50px)`;
-  for (let row = 0; row < boardSize; row++) {
+
+  // Always render red at the bottom, black at the top
+  for (let displayRow = 0; displayRow < boardSize; displayRow++) {
+    let row = displayRow;
+    // Flip the board so red is always at the bottom
+    row = boardSize - 1 - displayRow;
     for (let col = 0; col < boardSize; col++) {
       const square = document.createElement('div');
       square.className = 'square ' + ((row + col) % 2 === 1 ? 'dark' : 'light');
@@ -195,7 +227,7 @@ function onSquareClick(e) {
   const col = parseInt(e.currentTarget.dataset.col);
   const piece = board[row][col];
 
-  // Only allow selecting your own color
+  // Only allow selecting your own color and only if it's your turn
   if (piece && piece.color === myColor && piece.color === currentPlayer) {
     selected = { row, col };
     validMoves = getValidMoves(row, col, hasAnyJumps(currentPlayer));
@@ -341,8 +373,10 @@ if (chatForm && chatInput && chatMessages) {
     e.preventDefault();
     const msg = chatInput.value.trim();
     if (msg) {
+      // Use myRole if available, else fallback to "You"
+      const senderLabel = myRole ? myRole : "You";
+      appendChatMessage(senderLabel, msg);
       socket.emit('chatMessage', { room: roomCode, msg });
-      appendChatMessage('You', msg);
       chatInput.value = '';
     }
   });
@@ -359,5 +393,7 @@ if (chatForm && chatInput && chatMessages) {
   }
 }
 
-// Initialize game
-initBoard();
+// Initialize game if not coming from lobby
+if (!startBoard) {
+  initBoard();
+}

@@ -146,18 +146,16 @@ socket.on('bothReady', () => {
 });
 
 // Listen for startGame with color assignments
-socket.on('startGame', ({ colorAssignments, firstTurn }) => {
-  // Find my color from the assignments
+socket.on('startGame', ({ colorAssignments, firstTurn, board, moveHistory }) => {
   const myColorAssigned = colorAssignments && colorAssignments[socket.id];
+  // Store board and moveHistory in sessionStorage to pass to game.js
+  sessionStorage.setItem('startBoard', JSON.stringify(board));
+  sessionStorage.setItem('startMoveHistory', JSON.stringify(moveHistory));
+  sessionStorage.setItem('startFirstTurn', firstTurn);
   if (myColorAssigned) {
-    setTimeout(() => {
-      window.location.href = `game.html?room=${roomCode}&color=${myColorAssigned}`;
-    }, 1200);
+    window.location.href = `game.html?room=${roomCode}&color=${myColorAssigned}`;
   } else {
-    // fallback: just use myColor
-    setTimeout(() => {
-      window.location.href = `game.html?room=${roomCode}&color=${myColor}`;
-    }, 1200);
+    window.location.href = `game.html?room=${roomCode}&color=${myColor}`;
   }
 });
 
