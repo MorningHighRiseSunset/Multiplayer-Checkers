@@ -47,19 +47,9 @@ function randomRoomCode() {
 // Create Game
 createBtn.onclick = () => {
   const code = randomRoomCode();
-  // Optionally, notify server a room is being created
   socket.emit('createRoom', code);
-  const url = `${window.location.origin}${window.location.pathname.replace('lobby.html', 'room.html')}?room=${code}`;
-  shareLink.style.display = 'block';
-  shareLink.textContent = `Share this link: ${url}`;
-  shareLink.onclick = () => {
-    navigator.clipboard.writeText(url);
-    lobbyStatus.textContent = 'Link copied!';
-    setTimeout(() => lobbyStatus.textContent = '', 1200);
-  };
   roomInput.value = code;
-  lobbyStatus.textContent = 'Game created! Share the link or wait for a friend to join.';
-  // Optionally, auto-redirect to room.html?room=code
+  lobbyStatus.textContent = 'Game created! Share the code with your friend.';
   setTimeout(() => {
     window.location.href = `room.html?room=${code}`;
   }, 1200);
