@@ -25,7 +25,6 @@ process.on('unhandledRejection', err => {
   console.error('Unhandled Rejection:', err);
 });
 
-// Helper: broadcast full room state to all clients in the room
 function broadcastRoomState(room) {
   if (!rooms[room]) return;
   const state = {
@@ -35,7 +34,6 @@ function broadcastRoomState(room) {
   io.to(room).emit('roomState', state);
 }
 
-// Helper: initialize a new board
 function getInitialBoard() {
   const board = [];
   for (let row = 0; row < 8; row++) {
@@ -88,14 +86,11 @@ io.on('connection', (socket) => {
         moveHistory: []
       };
     }
-    // Assign role
     const roleCount = Object.keys(rooms[roomCode].roles).length;
     myRole = roleCount === 0 ? 'Player 1' : 'Player 2';
     rooms[roomCode].roles[socket.id] = myRole;
     rooms[roomCode].players[socket.id] = null;
     broadcastRoomState(roomCode);
-
-    // Notify others
     socket.to(roomCode).emit('playerJoined', { role: myRole });
   });
 
@@ -115,7 +110,6 @@ io.on('connection', (socket) => {
     rooms[room].ready[socket.id] = true;
     socket.to(room).emit('opponentReady', { color });
 
-    // If both players are ready, start the game and send color assignments and board state
     if (Object.keys(rooms[room].ready).length === 2) {
       const colorAssignments = {};
       const roles = rooms[room].roles;
@@ -129,7 +123,7 @@ io.on('connection', (socket) => {
         colorAssignments[player1Id] = colors[player1Id];
         colorAssignments[player2Id] = colors[player2Id];
       }
-      let firstTurn = 'black'; // Black always goes first in checkers
+      let firstTurn = 'black';
       rooms[room].inGame = true;
       rooms[room].board = getInitialBoard();
       rooms[room].currentPlayer = firstTurn;
@@ -148,7 +142,6 @@ io.on('connection', (socket) => {
   socket.on('joinGame', ({ room, color }) => {
     currentRoom = room;
     socket.join(room);
-    // Send current board state if game is in progress
     if (rooms[room] && rooms[room].inGame) {
       io.to(socket.id).emit('syncBoard', {
         board: rooms[room].board,
@@ -160,9 +153,17 @@ io.on('connection', (socket) => {
 
   socket.on('move', ({ room, from, to, move }) => {
     if (!rooms[room] || !rooms[room].inGame) return;
-    // Apply move to server board
     const board = rooms[room].board;
     const piece = board[from.row][from.col];
+    if (!piece) {
+      console.log('[server.js] Invalid move: no piece at', from);
+      return;
+    }
+    // Only allow moves for the current player
+    if (piece.color !== rooms[room].currentPlayer) {
+      console.log('[server.js] Invalid move: not', rooms[room].currentPlayer, 'turn');
+      return;
+    }
     board[to.row][to.col] = piece;
     board[from.row][from.col] = null;
     let becameKing = false;
@@ -175,16 +176,12 @@ io.on('connection', (socket) => {
     if (move.jump) {
       const { row: jr, col: jc } = move.jumped;
       board[jr][jc] = null;
-      // Multi-jump logic is handled on client; server trusts move for now
     }
-    // Record move in history
     rooms[room].moveHistory.push(
       `${capitalize(rooms[room].currentPlayer)}: (${from.row},${from.col}) → (${to.row},${to.col})${move.jump ? ' (jump)' : ''}${becameKing ? ' (king)' : ''}`
     );
     // Switch turn
     rooms[room].currentPlayer = rooms[room].currentPlayer === 'red' ? 'black' : 'red';
-    // Broadcast move and new board state to both players
-    socket.to(room).emit('opponentMove', { from, to, move });
     io.to(room).emit('syncBoard', {
       board: rooms[room].board,
       currentPlayer: rooms[room].currentPlayer,

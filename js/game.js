@@ -70,13 +70,6 @@ socket.on('syncBoard', ({ board: serverBoard, currentPlayer: serverCurrent, move
   updateStatus();
 });
 
-// Listen for opponent move (for legacy support, but syncBoard is authoritative)
-socket.on('opponentMove', ({ from, to, move }) => {
-  console.log('[game.js] Received opponentMove:', { from, to, move });
-  isMyTurn = true;
-  updateStatus();
-});
-
 // Listen for opponent leaving
 socket.on('opponentLeft', () => {
   alert('Opponent left the game.');
