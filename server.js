@@ -10,17 +10,14 @@ const io = new Server(server, {
 
 const rooms = {};
 
-// Health check route for Render
 app.get("/", (req, res) => {
   res.send("Checkers multiplayer server is running!");
 });
 
-// Catch-all 404 route for unknown endpoints
 app.use((req, res) => {
   res.status(404).send('Not found');
 });
 
-// Log uncaught exceptions and rejections
 process.on('uncaughtException', err => {
   console.error('Uncaught Exception:', err);
 });
@@ -32,44 +29,43 @@ process.on('unhandledRejection', err => {
 function broadcastRoomState(room) {
   if (!rooms[room]) return;
   const state = {
-    players: Object.values(rooms[room].colors), // ['red', 'black'] or []
-    colors: rooms[room].colors // {socketId: 'red', ...}
+    players: Object.values(rooms[room].roles), // ['Player 1', 'Player 2']
+    roles: rooms[room].roles // {socketId: 'Player 1', ...}
   };
   io.to(room).emit('roomState', state);
 }
 
 io.on('connection', (socket) => {
   let currentRoom = null;
-  let playerColor = null;
-
-  console.log(`[connect] Socket ${socket.id} connected`);
+  let myRole = null;
 
   socket.on('createRoom', (roomCode) => {
-    console.log(`[createRoom] Socket ${socket.id} created room ${roomCode}`);
     if (!rooms[roomCode]) {
-      rooms[roomCode] = { players: {}, ready: {}, colors: {} };
+      rooms[roomCode] = { players: {}, ready: {}, colors: {}, roles: {} };
     }
   });
 
   socket.on('joinRoom', (roomCode) => {
-    console.log(`[joinRoom] Socket ${socket.id} joined room ${roomCode}`);
     currentRoom = roomCode;
     socket.join(roomCode);
     if (!rooms[roomCode]) {
-      rooms[roomCode] = { players: {}, ready: {}, colors: {} };
+      rooms[roomCode] = { players: {}, ready: {}, colors: {}, roles: {} };
     }
+    // Assign role
+    const roleCount = Object.keys(rooms[roomCode].roles).length;
+    myRole = roleCount === 0 ? 'Player 1' : 'Player 2';
+    rooms[roomCode].roles[socket.id] = myRole;
     rooms[roomCode].players[socket.id] = null;
     broadcastRoomState(roomCode);
-    socket.to(roomCode).emit('opponentJoined');
+
+    // Notify others
+    socket.to(roomCode).emit('playerJoined', { role: myRole });
   });
 
   socket.on('pickColor', ({ room, color }) => {
-    console.log(`[pickColor] Socket ${socket.id} picked ${color} in room ${room}`);
     if (!rooms[room]) return;
     rooms[room].colors[socket.id] = color;
-    playerColor = color;
     broadcastRoomState(room);
-    // Notify both players of color pick (legacy, can be removed if only using roomState)
     io.to(room).emit('colorPicked', { color, byMe: false });
     const pickedColors = Object.values(rooms[room].colors);
     if (pickedColors.length === 2 && pickedColors[0] !== pickedColors[1]) {
@@ -78,7 +74,6 @@ io.on('connection', (socket) => {
   });
 
   socket.on('playerReady', ({ room, color }) => {
-    console.log(`[playerReady] Socket ${socket.id} (${color}) is ready in room ${room}`);
     if (!rooms[room]) return;
     rooms[room].ready[socket.id] = true;
     socket.to(room).emit('opponentReady', { color });
@@ -89,63 +84,60 @@ io.on('connection', (socket) => {
   });
 
   socket.on('joinGame', ({ room, color }) => {
-    console.log(`[joinGame] Socket ${socket.id} joined game in room ${room} as ${color}`);
     currentRoom = room;
-    playerColor = color;
     socket.join(room);
   });
 
   socket.on('move', ({ room, from, to, move }) => {
-    console.log(`[move] Socket ${socket.id} in room ${room}:`, from, '->', to, move);
     socket.to(room).emit('opponentMove', { from, to, move });
   });
 
   socket.on('resetGame', ({ room }) => {
-    console.log(`[resetGame] Room ${room} requested reset`);
     io.to(room).emit('resetGame');
   });
 
-  socket.on('leaveRoom', ({ room, color }) => {
-    console.log(`[leaveRoom] Socket ${socket.id} (${color}) left room ${room}`);
+  socket.on('leaveRoom', ({ room }) => {
     socket.leave(room);
     if (rooms[room]) {
+      const leftRole = rooms[room].roles[socket.id];
       delete rooms[room].players[socket.id];
       delete rooms[room].ready[socket.id];
       delete rooms[room].colors[socket.id];
+      delete rooms[room].roles[socket.id];
       broadcastRoomState(room);
-      socket.to(room).emit('opponentLeft');
+      socket.to(room).emit('playerLeft', { role: leftRole });
       if (
         Object.keys(rooms[room].players).length === 0 &&
         Object.keys(rooms[room].ready).length === 0 &&
-        Object.keys(rooms[room].colors).length === 0
+        Object.keys(rooms[room].colors).length === 0 &&
+        Object.keys(rooms[room].roles).length === 0
       ) {
         delete rooms[room];
-        console.log(`[cleanup] Deleted empty room ${room}`);
       }
     }
   });
 
-  socket.on('leaveGame', ({ room, color }) => {
-    console.log(`[leaveGame] Socket ${socket.id} (${color}) left game in room ${room}`);
+  socket.on('leaveGame', ({ room }) => {
     socket.leave(room);
     socket.to(room).emit('opponentLeft');
   });
 
   socket.on('disconnect', () => {
-    console.log(`[disconnect] Socket ${socket.id} disconnected`);
     if (currentRoom && rooms[currentRoom]) {
+      const leftRole = rooms[currentRoom].roles[socket.id];
       delete rooms[currentRoom].players[socket.id];
       delete rooms[currentRoom].ready[socket.id];
       delete rooms[currentRoom].colors[socket.id];
+      delete rooms[currentRoom].roles[socket.id];
       broadcastRoomState(currentRoom);
-      socket.to(currentRoom).emit('opponentLeft');
+      socket.to(currentRoom).emit('playerLeft', { role: leftRole });
       if (
         Object.keys(rooms[currentRoom].players).length === 0 &&
         Object.keys(rooms[currentRoom].ready).length === 0 &&
-        Object.keys(rooms[currentRoom].colors).length === 0
+        Object.keys(rooms[currentRoom].colors).length === 0 &&
+        Object.keys(rooms[currentRoom].roles).length === 0
       ) {
         delete rooms[currentRoom];
-        console.log(`[cleanup] Deleted empty room ${currentRoom}`);
       }
     }
   });

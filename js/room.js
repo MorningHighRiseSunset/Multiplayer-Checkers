@@ -1,5 +1,3 @@
-// --- Multiplayer Room Logic with Socket.IO and true presence sync ---
-
 const socket = io('https://multiplayer-checkers.onrender.com');
 
 const params = new URLSearchParams(window.location.search);
@@ -15,9 +13,8 @@ const playerStatus = {
   red: document.querySelector('#player-red .status'),
   black: document.querySelector('#player-black .status')
 };
-const dotRed = document.getElementById('dot-red');
-const dotBlack = document.getElementById('dot-black');
 
+let myRole = null;
 let myColor = null;
 let iAmReady = false;
 let opponentReady = false;
@@ -25,21 +22,24 @@ let opponentReady = false;
 // Join the room
 socket.emit('joinRoom', roomCode);
 
-// Handle color pick
-pickBtns.forEach(btn => {
-  btn.onclick = () => {
-    myColor = btn.dataset.color;
-    socket.emit('pickColor', { room: roomCode, color: myColor });
-    // Do not update UI here; wait for roomState event
-    roomStatus.textContent = "Waiting for opponent to join and pick...";
-  };
-});
-
-// Listen for room state updates (true multiplayer sync)
+// Listen for role assignment and room state
 socket.on('roomState', (state) => {
-  // Reset dots and statuses
-  dotRed.classList.remove('active');
-  dotBlack.classList.remove('active');
+  // Find my role
+  for (const [sockId, role] of Object.entries(state.roles)) {
+    if (sockId === socket.id) {
+      myRole = role;
+      break;
+    }
+  }
+  // Show notification if both players are present
+  const roles = Object.values(state.roles);
+  if (roles.length === 2) {
+    roomStatus.textContent = "Both players are in the lobby!";
+  } else if (roles.length === 1) {
+    roomStatus.textContent = "Waiting for another player to join...";
+  }
+
+  // Reset pick buttons and statuses
   pickBtns.forEach(b => {
     b.disabled = false;
     b.textContent = "Pick";
@@ -48,13 +48,12 @@ socket.on('roomState', (state) => {
 
   // Track which colors are picked and by whom
   let pickedColors = {};
-  for (const [sockId, color] of Object.entries(state.colors)) {
+  for (const [sockId, color] of Object.entries(state.colors || {})) {
     pickedColors[color] = sockId;
   }
 
-  // Update dots and pick buttons
+  // Update pick buttons
   if (pickedColors.red) {
-    dotRed.classList.add('active');
     pickBtns.forEach(b => {
       if (b.dataset.color === 'red') {
         b.disabled = true;
@@ -69,7 +68,6 @@ socket.on('roomState', (state) => {
     });
   }
   if (pickedColors.black) {
-    dotBlack.classList.add('active');
     pickBtns.forEach(b => {
       if (b.dataset.color === 'black') {
         b.disabled = true;
@@ -89,6 +87,31 @@ socket.on('roomState', (state) => {
     readyBtn.disabled = false;
     roomStatus.textContent = "Both players picked! Click Ready when ready.";
   }
+});
+
+// Listen for player join/leave notifications
+socket.on('playerJoined', ({ role }) => {
+  if (role === 'Player 2') {
+    roomStatus.textContent = "Player 2 joined the lobby!";
+  } else if (role === 'Player 1') {
+    roomStatus.textContent = "Player 1 joined the lobby!";
+  }
+});
+socket.on('playerLeft', ({ role }) => {
+  if (role === 'Player 2') {
+    roomStatus.textContent = "Player 2 left the lobby!";
+  } else if (role === 'Player 1') {
+    roomStatus.textContent = "Player 1 left the lobby!";
+  }
+});
+
+// Handle color pick
+pickBtns.forEach(btn => {
+  btn.onclick = () => {
+    myColor = btn.dataset.color;
+    socket.emit('pickColor', { room: roomCode, color: myColor });
+    roomStatus.textContent = "Waiting for opponent to join and pick...";
+  };
 });
 
 // Ready logic
@@ -119,25 +142,21 @@ socket.on('bothReady', () => {
   }, 1200);
 });
 
-// Listen for opponent joining (to update presence dot)
-socket.on('opponentJoined', () => {
-  // No-op: roomState will handle presence
-});
-
-// Listen for opponent leaving
+// Listen for opponent leaving (fallback)
 socket.on('opponentLeft', () => {
-  // Remove opponent's presence (roomState will handle dots)
-  alert('Opponent left the room.');
-  window.location.href = 'lobby.html';
+  roomStatus.textContent = "Opponent left the room!";
+  setTimeout(() => {
+    window.location.href = 'lobby.html';
+  }, 1200);
 });
 
 // Leave button
 leaveBtn.onclick = () => {
-  socket.emit('leaveRoom', { room: roomCode, color: myColor });
+  socket.emit('leaveRoom', { room: roomCode });
   window.location.href = "lobby.html";
 };
 
 // On disconnect, clean up
 window.addEventListener('beforeunload', () => {
-  socket.emit('leaveRoom', { room: roomCode, color: myColor });
+  socket.emit('leaveRoom', { room: roomCode });
 });
