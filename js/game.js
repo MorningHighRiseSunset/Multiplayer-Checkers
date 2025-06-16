@@ -14,6 +14,20 @@ const statusDiv = document.getElementById('game-status');
 const moveHistoryList = document.getElementById('move-history');
 const printBtn = document.getElementById('print-btn');
 
+// --- Add Leave Game button ---
+let leaveBtn = document.getElementById('leave-btn');
+if (!leaveBtn) {
+  leaveBtn = document.createElement('button');
+  leaveBtn.id = 'leave-btn';
+  leaveBtn.textContent = 'Leave Game';
+  printBtn.parentNode.appendChild(leaveBtn);
+}
+
+leaveBtn.onclick = () => {
+  socket.emit('leaveGame', { room: roomCode, color: myColor });
+  window.location.href = 'lobby.html';
+};
+
 // --- Chat elements ---
 const chatForm = document.getElementById('chat-form');
 const chatInput = document.getElementById('chat-input');
@@ -26,6 +40,7 @@ let validMoves = [];
 let moveHistory = [];
 let isMyTurn = false;
 let gameStarted = false;
+let gameEnded = false;
 
 // Restore initial board and move history if coming from lobby
 const startBoard = sessionStorage.getItem('startBoard');
@@ -35,22 +50,16 @@ const startFirstTurn = sessionStorage.getItem('startFirstTurn');
 // Get my socket id after connecting
 socket.on('connect', () => {
   mySocketId = socket.id;
-  console.log('[game.js] My socket id:', mySocketId);
   // Join the game room and re-register color with server
   socket.emit('joinGame', { room: roomCode, color: myColor });
 });
 
 // Listen for startGame with color assignment and first turn
 socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveHistory: serverHistory, roles }) => {
-  console.log('[game.js] Received startGame:', { colorAssignments, firstTurn, serverBoard, serverHistory, roles });
-  console.log('[game.js] My socket id:', socket.id);
-  console.log('[game.js] Color assignments:', colorAssignments);
-
   // Assign my color if server sends it (should match sessionStorage)
   if (colorAssignments && socket.id in colorAssignments) {
     myColor = colorAssignments[socket.id];
     sessionStorage.setItem('myAssignedColor', myColor);
-    console.log('[game.js] My assigned color:', myColor);
   }
   if (roles && roles[socket.id]) {
     myRole = roles[socket.id];
@@ -59,16 +68,17 @@ socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveH
   currentPlayer = firstTurn || 'black';
   isMyTurn = (myColor === currentPlayer);
   gameStarted = true;
+  gameEnded = false;
   if (serverBoard) board = JSON.parse(JSON.stringify(serverBoard));
   if (serverHistory) moveHistory = [...serverHistory];
   renderBoard();
   renderMoveHistory();
   updateStatus();
+  checkGameOver();
 });
 
 // Sync board state from server
 socket.on('syncBoard', ({ board: serverBoard, currentPlayer: serverCurrent, moveHistory: serverHistory }) => {
-  console.log('[game.js] Received syncBoard:', { serverBoard, serverCurrent, serverHistory });
   if (serverBoard) board = JSON.parse(JSON.stringify(serverBoard));
   if (serverCurrent) currentPlayer = serverCurrent;
   if (serverHistory) moveHistory = [...serverHistory];
@@ -79,17 +89,18 @@ socket.on('syncBoard', ({ board: serverBoard, currentPlayer: serverCurrent, move
   renderBoard();
   renderMoveHistory();
   updateStatus();
+  checkGameOver();
 });
 
 // Listen for opponent leaving
 socket.on('opponentLeft', () => {
-  alert('Opponent left the game.');
-  window.location.href = 'lobby.html';
+  // Calculate points for the player who stayed
+  const myPoints = countPieces(myColor);
+  showEndGameScreen(`Opponent left. You win!`, myPoints);
 });
 
 // Listen for game reset
 socket.on('resetGame', () => {
-  console.log('[game.js] Received resetGame');
   initBoard();
 });
 
@@ -171,6 +182,7 @@ function renderBoard() {
 }
 
 function updateStatus() {
+  if (gameEnded) return;
   if (!myColor) {
     statusDiv.textContent = "Spectator mode";
     return;
@@ -184,7 +196,6 @@ function updateStatus() {
   } else {
     statusDiv.textContent = `Opponent's turn (${currentPlayer})`;
   }
-  console.log('[game.js] updateStatus:', { myColor, currentPlayer, isMyTurn, gameStarted });
 }
 
 // Get valid moves for a piece
@@ -220,10 +231,7 @@ function hasAnyJumps(color) {
 
 // Handle square click
 function onSquareClick(e) {
-  if (!isMyTurn || !gameStarted) {
-    console.log('[game.js] Not your turn or game not started', { isMyTurn, gameStarted });
-    return;
-  }
+  if (!isMyTurn || !gameStarted || gameEnded) return;
   const row = parseInt(e.currentTarget.dataset.row);
   const col = parseInt(e.currentTarget.dataset.col);
   const piece = board[row][col];
@@ -232,7 +240,6 @@ function onSquareClick(e) {
   if (piece && piece.color === myColor && piece.color === currentPlayer) {
     selected = { row, col };
     validMoves = getValidMoves(row, col, hasAnyJumps(currentPlayer));
-    console.log('[game.js] Selected piece:', { row, col, validMoves });
     renderBoard();
     return;
   }
@@ -253,7 +260,6 @@ function onSquareClick(e) {
 
 // Send move to server, let server update board and broadcast to both players
 function sendMoveToServer(from, to, move) {
-  console.log('[game.js] Sending move to server:', { from, to, move, myColor, mySocketId });
   socket.emit('move', {
     room: roomCode,
     from,
@@ -290,6 +296,42 @@ function isGameOver() {
     }
   }
   return !hasPiece || !hasMove;
+}
+
+function checkGameOver() {
+  if (gameEnded) return;
+  if (isGameOver()) {
+    let winner = currentPlayer === 'red' ? 'Black' : 'Red';
+    const winnerColor = winner.toLowerCase();
+    const points = countPieces(winnerColor);
+    showEndGameScreen(`${winner} wins!`, points);
+    gameEnded = true;
+  }
+}
+
+function countPieces(color) {
+  let count = 0;
+  for (let row = 0; row < boardSize; row++) {
+    for (let col = 0; col < boardSize; col++) {
+      if (board[row][col] && board[row][col].color === color) count++;
+    }
+  }
+  return count;
+}
+
+function showEndGameScreen(message, points) {
+  gameEnded = true;
+  statusDiv.innerHTML = `
+    <div style="font-size:1.5em;color:#ffd700;margin:18px 0 10px 0;">${message}</div>
+    <div style="font-size:1.1em;color:#fff;">Your points: <b>${points}</b></div>
+    <button id="leave-btn-final" style="margin-top:18px;padding:10px 28px;font-size:1em;background:#7a5c2e;color:#fff;border:none;border-radius:8px;cursor:pointer;">Back to Lobby</button>
+  `;
+  const leaveBtnFinal = document.getElementById('leave-btn-final');
+  if (leaveBtnFinal) {
+    leaveBtnFinal.onclick = () => {
+      window.location.href = 'lobby.html';
+    };
+  }
 }
 
 // Print button (prints move history)

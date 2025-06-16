@@ -11,7 +11,6 @@ const colorButtons = document.querySelectorAll('.color-btn');
 const readyBtn = document.getElementById('ready-btn');
 const leaveBtn = document.getElementById('leave-btn');
 const statusDiv = document.getElementById('room-status');
-const playersDiv = document.getElementById('players-list');
 const roomCodeDiv = document.getElementById('room-code');
 
 // Show only the room code, copyable
@@ -39,20 +38,14 @@ socket.on('colorPicked', ({ color }) => {
   statusDiv.textContent = `A player picked ${color}`;
 });
 
-// Listen for room state updates
+// Listen for room state updates (for status dots)
 socket.on('roomState', ({ roles, colors }) => {
-  if (!playersDiv) return;
-  playersDiv.innerHTML = '';
   // Reset dots
   const dot1 = document.getElementById('dot-player1');
   const dot2 = document.getElementById('dot-player2');
   if (dot1) dot1.classList.remove('active');
   if (dot2) dot2.classList.remove('active');
   for (const [sockId, role] of Object.entries(roles)) {
-    const color = colors[sockId] || 'not picked';
-    const li = document.createElement('li');
-    li.textContent = `${role}: ${color}`;
-    playersDiv.appendChild(li);
     if (role === 'Player 1' && dot1) dot1.classList.add('active');
     if (role === 'Player 2' && dot2) dot2.classList.add('active');
   }
@@ -109,6 +102,11 @@ socket.on('playerJoined', ({ role }) => {
 });
 socket.on('playerLeft', ({ role }) => {
   statusDiv.textContent = `${role} left the room.`;
+});
+
+// Show error if both pick the same color
+socket.on('roomStatus', ({ msg }) => {
+  statusDiv.textContent = msg;
 });
 
 // On page load, join the room

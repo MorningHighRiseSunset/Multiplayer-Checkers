@@ -1,29 +1,30 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <meta charset="UTF-8">
   <title>Checkers Game</title>
-  <link rel="stylesheet" href="/css/game.css">
+  <link rel="stylesheet" href="css/game.css">
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 </head>
 <body>
-  <h1>Checkers Game</h1>
-  <div id="controls">
+  <h1>Checkers</h1>
+  <div id="controls" style="margin-bottom: 18px;">
     <button id="print-btn">Print Moves</button>
+    <!-- Leave Game button will be added by JS if not present -->
   </div>
-  <div id="game-board"></div>
-  <div id="game-status"></div>
-  <div id="move-history-container">
-    <h2>Move History</h2>
+  <div id="game-status" style="margin-bottom: 18px; font-size: 1.2em; color: #ffd700;"></div>
+  <div id="game-board" style="margin: 0 auto 24px auto; max-width: 400px;"></div>
+  <div id="move-history-container" style="max-width: 400px; margin: 0 auto 24px auto;">
+    <h3 style="color:#ffd700;">Move History</h3>
     <ol id="move-history"></ol>
   </div>
-  <div id="chat-container">
-  <div id="chat-messages"></div>
-  <form id="chat-form">
-    <input id="chat-input" type="text" placeholder="Type a message..." autocomplete="off" maxlength="200" />
-    <button type="submit">Send</button>
-  </form>
+  <div id="chat-container" style="max-width: 400px; margin: 0 auto;">
+    <div id="chat-messages" style="min-height: 48px; max-height: 120px; overflow-y: auto; font-size: 1em; margin-bottom: 8px; color: #fffbe6;"></div>
+    <form id="chat-form" style="display: flex; gap: 8px;">
+      <input id="chat-input" type="text" placeholder="Type a message..." autocomplete="off" maxlength="200" style="flex:1; padding:7px 10px; border-radius:6px; border:1px solid #ffd700; font-size:1em; background:#222; color:#ffd700;">
+      <button type="submit" style="padding:7px 18px; border-radius:6px; border:none; background:#a67c38; color:#fff; font-weight:bold; cursor:pointer;">Send</button>
+    </form>
   </div>
-  <script src="/js/game.js"></script>
+  <script src="js/game.js"></script>
 </body>
 </html>
