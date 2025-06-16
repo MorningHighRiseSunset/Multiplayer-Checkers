@@ -1,6 +1,6 @@
 // --- Multiplayer Game Logic with Socket.IO ---
 
-const socket = io('http://localhost:3000'); // Change to your deployed server URL
+const socket = io('https://multiplayer-checkers.onrender.com'); // Change to your deployed server URL
 
 const params = new URLSearchParams(window.location.search);
 const roomCode = params.get('room');

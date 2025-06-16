@@ -1,7 +1,7 @@
 // --- Lobby Logic with Socket.IO and Animated Background ---
 
 // Add Socket.IO client (ensure <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script> is in your HTML)
-const socket = io('http://localhost:3000'); // Change to your deployed server URL
+const socket = io('https://multiplayer-checkers.onrender.com'); // Change to your deployed server URL
 
 // Animated background: floating checkers and tiles
 const bg = document.getElementById('floating-bg');
