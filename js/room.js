@@ -12,6 +12,17 @@ const readyBtn = document.getElementById('ready-btn');
 const leaveBtn = document.getElementById('leave-btn');
 const statusDiv = document.getElementById('room-status');
 const playersDiv = document.getElementById('players-list');
+const roomCodeDiv = document.getElementById('room-code');
+
+// Show the join link and code at the top
+if (roomCodeDiv && roomCode) {
+  const joinUrl = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
+  roomCodeDiv.innerHTML = `
+    <span style="color:#ffd700;font-weight:bold;">Room code:</span> <span style="color:#fff;">${roomCode}</span><br>
+    <span style="color:#ffd700;font-weight:bold;">Invite link:</span>
+    <input type="text" value="${joinUrl}" readonly style="width:90%;margin-top:4px;background:#222;color:#ffd700;border:1px solid #ffd700;border-radius:5px;padding:3px 6px;font-size:1em;">
+  `;
+}
 
 // Pick color
 colorButtons.forEach(btn => {
@@ -35,16 +46,18 @@ socket.on('roomState', ({ roles, colors }) => {
   if (!playersDiv) return;
   playersDiv.innerHTML = '';
   // Reset dots
-  document.getElementById('dot-player1').classList.remove('active');
-  document.getElementById('dot-player2').classList.remove('active');
+  const dot1 = document.getElementById('dot-player1');
+  const dot2 = document.getElementById('dot-player2');
+  if (dot1) dot1.classList.remove('active');
+  if (dot2) dot2.classList.remove('active');
   for (const [sockId, role] of Object.entries(roles)) {
     const color = colors[sockId] || 'not picked';
     const li = document.createElement('li');
     li.textContent = `${role}: ${color}`;
     playersDiv.appendChild(li);
     // Light up the dot for this player
-    if (role === 'Player 1') document.getElementById('dot-player1').classList.add('active');
-    if (role === 'Player 2') document.getElementById('dot-player2').classList.add('active');
+    if (role === 'Player 1' && dot1) dot1.classList.add('active');
+    if (role === 'Player 2' && dot2) dot2.classList.add('active');
   }
 });
 
