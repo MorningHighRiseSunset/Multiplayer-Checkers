@@ -18,9 +18,8 @@ const roomCodeDiv = document.getElementById('room-code');
 if (roomCodeDiv && roomCode) {
   const joinUrl = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
   roomCodeDiv.innerHTML = `
-    <span style="color:#ffd700;font-weight:bold;">Room code:</span> <span style="color:#fff;">${roomCode}</span><br>
-    <span style="color:#ffd700;font-weight:bold;">Invite link:</span>
-    <input type="text" value="${joinUrl}" readonly style="width:90%;margin-top:4px;background:#222;color:#ffd700;border:1px solid #ffd700;border-radius:5px;padding:3px 6px;font-size:1em;">
+    <span style="color:#ffd700;font-weight:bold;">Room code:</span>
+    <input type="text" value="${roomCode}" readonly style="width:120px;margin-left:8px;background:#222;color:#ffd700;border:1px solid #ffd700;border-radius:5px;padding:3px 6px;font-size:1em;">
   `;
 }
 
