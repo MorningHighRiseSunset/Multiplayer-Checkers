@@ -164,19 +164,34 @@ io.on('connection', (socket) => {
     currentRoom = room;
     socket.join(room);
     if (rooms[room]) {
-      // Remove any old socket ID with the same color or role
+      // Find any old socket ID with the same color or role and transfer their state
+      let oldId = null;
       for (const [sockId, col] of Object.entries(rooms[room].colors)) {
         if ((col === color || rooms[room].roles[sockId] === role) && sockId !== socket.id) {
-          if (rooms[room].roles[sockId]) {
-            rooms[room].roles[socket.id] = rooms[room].roles[sockId];
-            delete rooms[room].roles[sockId];
-          }
-          delete rooms[room].colors[sockId];
-          delete rooms[room].ready[sockId];
+          oldId = sockId;
+          break;
         }
       }
-      rooms[room].colors[socket.id] = color;
-      if (role) rooms[room].roles[socket.id] = role;
+      if (oldId) {
+        // Transfer role, color, and ready state to new socket ID
+        if (rooms[room].roles[oldId]) {
+          rooms[room].roles[socket.id] = rooms[room].roles[oldId];
+          delete rooms[room].roles[oldId];
+        }
+        if (rooms[room].colors[oldId]) {
+          rooms[room].colors[socket.id] = rooms[room].colors[oldId];
+          delete rooms[room].colors[oldId];
+        }
+        if (rooms[room].ready[oldId]) {
+          rooms[room].ready[socket.id] = rooms[room].ready[oldId];
+          delete rooms[room].ready[oldId];
+        }
+        console.log('[server.js] joinGame: transferred state from', oldId, 'to', socket.id, 'in room', room);
+      } else {
+        // If not found, just set what we know
+        if (color) rooms[room].colors[socket.id] = color;
+        if (role) rooms[room].roles[socket.id] = role;
+      }
       if (rooms[room].inGame) {
         io.to(socket.id).emit('syncBoard', {
           board: rooms[room].board,

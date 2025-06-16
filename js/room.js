@@ -67,6 +67,8 @@ readyBtn.onclick = () => {
     console.log('[room.js] Tried to ready without picking color');
     return;
   }
+  // Save color pick again for redundancy
+  sessionStorage.setItem('myColorPick', myColorPick);
   console.log('[room.js] Ready clicked. Emitting playerReady:', { room: roomCode, color: myColorPick });
   socket.emit('playerReady', { room: roomCode, color: myColorPick });
   readyBtn.disabled = true;
@@ -90,7 +92,7 @@ socket.on('startGame', ({ colorAssignments, firstTurn, roles }) => {
   myAssignedColor = colorAssignments[socket.id];
   myRole = roles[socket.id];
   // Fallback: If not found, try to match by color pick
-  if (!myAssignedColor && colorAssignments) {
+  if ((!myAssignedColor || !myRole) && colorAssignments) {
     for (const [id, color] of Object.entries(colorAssignments)) {
       if (color === myColorPick) {
         myAssignedColor = color;
