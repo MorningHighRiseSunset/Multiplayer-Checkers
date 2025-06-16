@@ -1,58 +1,115 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Checkers Room Lobby</title>
-  <link rel="stylesheet" href="/css/room.css">
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-</head>
-<body>
-  <!-- Player status bar at the top, not overlapping -->
-  <div id="player-status-bar">
-    <div class="player-status" id="status-player1">
-      <span class="profile-pic-emoji" role="img" aria-label="Player 1">👤</span>
-      <span class="status-dot" id="dot-player1"></span>
-      <span class="player-label">Player 1</span>
-    </div>
-    <div class="player-status" id="status-player2">
-      <span class="profile-pic-emoji" role="img" aria-label="Player 2">👤</span>
-      <span class="status-dot" id="dot-player2"></span>
-      <span class="player-label">Player 2</span>
-    </div>
-  </div>
-  <main>
-    <div id="room-container">
-      <h1>Game Room</h1>
-      <div id="room-code"></div>
-      <div id="players">
-        <div class="player" id="player-red">
-          <div class="checker-sample red"></div>
-          <span>Red</span>
-          <button class="color-btn" data-color="red">Pick</button>
-          <span class="status"></span>
-        </div>
-        <div class="player" id="player-black">
-          <div class="checker-sample black"></div>
-          <span>Black</span>
-          <button class="color-btn" data-color="black">Pick</button>
-          <span class="status"></span>
-        </div>
-      </div>
-      <div id="ready-section">
-        <button id="ready-btn" disabled>Ready</button>
-        <button id="leave-btn">Leave</button>
-      </div>
-      <div id="room-status"></div>
-      <ul id="players-list"></ul>
-    </div>
-    <div id="chat-container">
-      <div id="chat-messages"></div>
-      <form id="chat-form">
-        <input id="chat-input" type="text" placeholder="Type a message..." autocomplete="off" maxlength="200" />
-        <button type="submit">Send</button>
-      </form>
-    </div>
-  </main>
-  <script src="/js/room.js"></script>
-</body>
-</html>
+const socket = io('https://multiplayer-checkers.onrender.com');
+
+const params = new URLSearchParams(window.location.search);
+const roomCode = params.get('room');
+
+let myColorPick = null;
+let myAssignedColor = null;
+let myRole = null;
+
+const colorButtons = document.querySelectorAll('.color-btn');
+const readyBtn = document.getElementById('ready-btn');
+const leaveBtn = document.getElementById('leave-btn');
+const statusDiv = document.getElementById('room-status');
+const playersDiv = document.getElementById('players-list');
+const roomCodeDiv = document.getElementById('room-code');
+
+// Show only the room code, copyable
+if (roomCodeDiv && roomCode) {
+  roomCodeDiv.innerHTML = `
+    <span style="color:#ffd700;font-weight:bold;">Room code:</span>
+    <input type="text" value="${roomCode}" readonly style="width:120px;margin-left:8px;background:#222;color:#ffd700;border:1px solid #ffd700;border-radius:5px;padding:3px 6px;font-size:1em;text-align:center;">
+  `;
+}
+
+// Pick color
+colorButtons.forEach(btn => {
+  btn.onclick = () => {
+    myColorPick = btn.dataset.color;
+    socket.emit('pickColor', { room: roomCode, color: myColorPick });
+    colorButtons.forEach(b => b.disabled = true);
+    btn.classList.add('selected');
+    statusDiv.textContent = `You picked ${myColorPick}`;
+    readyBtn.disabled = false;
+  };
+});
+
+// Listen for color picked
+socket.on('colorPicked', ({ color }) => {
+  statusDiv.textContent = `A player picked ${color}`;
+});
+
+// Listen for room state updates
+socket.on('roomState', ({ roles, colors }) => {
+  if (!playersDiv) return;
+  playersDiv.innerHTML = '';
+  // Reset dots
+  const dot1 = document.getElementById('dot-player1');
+  const dot2 = document.getElementById('dot-player2');
+  if (dot1) dot1.classList.remove('active');
+  if (dot2) dot2.classList.remove('active');
+  for (const [sockId, role] of Object.entries(roles)) {
+    const color = colors[sockId] || 'not picked';
+    const li = document.createElement('li');
+    li.textContent = `${role}: ${color}`;
+    playersDiv.appendChild(li);
+    if (role === 'Player 1' && dot1) dot1.classList.add('active');
+    if (role === 'Player 2' && dot2) dot2.classList.add('active');
+  }
+});
+
+// Ready button
+readyBtn.onclick = () => {
+  if (!myColorPick) {
+    statusDiv.textContent = "Pick a color first!";
+    return;
+  }
+  socket.emit('playerReady', { room: roomCode, color: myColorPick });
+  readyBtn.disabled = true;
+  statusDiv.textContent = "Waiting for other player...";
+};
+
+// Leave button
+leaveBtn.onclick = () => {
+  socket.emit('leaveRoom', { room: roomCode });
+  sessionStorage.removeItem('myAssignedColor');
+  sessionStorage.removeItem('myRole');
+  sessionStorage.removeItem('startFirstTurn');
+  window.location.href = 'lobby.html';
+};
+
+// Listen for both players ready and color assignments
+socket.on('startGame', ({ colorAssignments, firstTurn, roles }) => {
+  myAssignedColor = colorAssignments[socket.id];
+  myRole = roles[socket.id];
+  sessionStorage.setItem('myAssignedColor', myAssignedColor);
+  sessionStorage.setItem('myRole', myRole);
+  sessionStorage.setItem('startFirstTurn', firstTurn);
+  window.location.href = `game.html?room=${roomCode}`;
+});
+
+// Listen for opponent ready
+socket.on('opponentReady', ({ color }) => {
+  statusDiv.textContent = `Opponent is ready (${color})`;
+});
+
+// Listen for both players picked
+socket.on('bothPicked', () => {
+  statusDiv.textContent = "Both players picked colors. Click Ready!";
+});
+
+// Listen for both players ready
+socket.on('bothReady', () => {
+  statusDiv.textContent = "Both players are ready. Starting game...";
+});
+
+// Listen for player joined/left
+socket.on('playerJoined', ({ role }) => {
+  statusDiv.textContent = `${role} joined the room.`;
+});
+socket.on('playerLeft', ({ role }) => {
+  statusDiv.textContent = `${role} left the room.`;
+});
+
+// On page load, join the room
+socket.emit('joinRoom', roomCode);

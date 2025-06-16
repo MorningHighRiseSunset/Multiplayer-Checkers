@@ -14,12 +14,11 @@ const statusDiv = document.getElementById('room-status');
 const playersDiv = document.getElementById('players-list');
 const roomCodeDiv = document.getElementById('room-code');
 
-// Show the join link and code at the top
+// Show only the room code, copyable
 if (roomCodeDiv && roomCode) {
-  const joinUrl = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
   roomCodeDiv.innerHTML = `
     <span style="color:#ffd700;font-weight:bold;">Room code:</span>
-    <input type="text" value="${roomCode}" readonly style="width:120px;margin-left:8px;background:#222;color:#ffd700;border:1px solid #ffd700;border-radius:5px;padding:3px 6px;font-size:1em;">
+    <input type="text" value="${roomCode}" readonly style="width:120px;margin-left:8px;background:#222;color:#ffd700;border:1px solid #ffd700;border-radius:5px;padding:3px 6px;font-size:1em;text-align:center;">
   `;
 }
 
@@ -31,7 +30,7 @@ colorButtons.forEach(btn => {
     colorButtons.forEach(b => b.disabled = true);
     btn.classList.add('selected');
     statusDiv.textContent = `You picked ${myColorPick}`;
-    readyBtn.disabled = false; // Enable Ready button after picking color
+    readyBtn.disabled = false;
   };
 });
 
@@ -54,7 +53,6 @@ socket.on('roomState', ({ roles, colors }) => {
     const li = document.createElement('li');
     li.textContent = `${role}: ${color}`;
     playersDiv.appendChild(li);
-    // Light up the dot for this player
     if (role === 'Player 1' && dot1) dot1.classList.add('active');
     if (role === 'Player 2' && dot2) dot2.classList.add('active');
   }
@@ -74,7 +72,6 @@ readyBtn.onclick = () => {
 // Leave button
 leaveBtn.onclick = () => {
   socket.emit('leaveRoom', { room: roomCode });
-  // Optionally clear sessionStorage
   sessionStorage.removeItem('myAssignedColor');
   sessionStorage.removeItem('myRole');
   sessionStorage.removeItem('startFirstTurn');
@@ -116,3 +113,32 @@ socket.on('playerLeft', ({ role }) => {
 
 // On page load, join the room
 socket.emit('joinRoom', roomCode);
+
+// --- Chat box logic ---
+const chatForm = document.getElementById('chat-form');
+const chatInput = document.getElementById('chat-input');
+const chatMessages = document.getElementById('chat-messages');
+
+if (chatForm && chatInput && chatMessages) {
+  chatForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const msg = chatInput.value.trim();
+    if (msg) {
+      const senderLabel = myRole ? myRole : "You";
+      appendChatMessage(senderLabel, msg);
+      socket.emit('chatMessage', { room: roomCode, msg });
+      chatInput.value = '';
+    }
+  });
+
+  socket.on('chatMessage', ({ sender, msg }) => {
+    appendChatMessage(sender, msg);
+  });
+
+  function appendChatMessage(sender, msg) {
+    const div = document.createElement('div');
+    div.innerHTML = `<strong>${sender}:</strong> ${msg}`;
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+}

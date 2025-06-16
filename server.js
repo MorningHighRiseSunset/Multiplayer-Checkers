@@ -110,6 +110,11 @@ io.on('connection', (socket) => {
     rooms[room].ready[socket.id] = true;
     socket.to(room).emit('opponentReady', { color });
 
+    // Debug logging
+    console.log('playerReady:', socket.id, color, room);
+    console.log('Current ready:', rooms[room].ready);
+    console.log('Current colors:', rooms[room].colors);
+
     if (Object.keys(rooms[room].ready).length === 2) {
       const colorAssignments = {};
       const roles = rooms[room].roles;
@@ -136,10 +141,12 @@ io.on('connection', (socket) => {
         moveHistory: rooms[room].moveHistory,
         roles: rooms[room].roles
       });
+      // Debug logging
+      console.log('startGame emitted to room', room, colorAssignments);
     }
   });
 
-  // Fix: When a player joins the game, allow them to re-register their color if provided (for page reloads)
+  // When a player joins the game, allow them to re-register their color if provided (for page reloads)
   socket.on('joinGame', ({ room, color }) => {
     currentRoom = room;
     socket.join(room);
