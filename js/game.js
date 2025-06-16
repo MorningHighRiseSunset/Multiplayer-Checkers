@@ -2,7 +2,10 @@ const socket = io('https://multiplayer-checkers.onrender.com');
 
 const params = new URLSearchParams(window.location.search);
 const roomCode = params.get('room');
-let myColor = null; // Will be set by server!
+
+// Always get assigned color and role from sessionStorage (set in room.js)
+let myColor = sessionStorage.getItem('myAssignedColor');
+let myRole = sessionStorage.getItem('myRole');
 let mySocketId = null;
 
 const boardSize = 8;
@@ -23,7 +26,6 @@ let validMoves = [];
 let moveHistory = [];
 let isMyTurn = false;
 let gameStarted = false;
-let myRole = null;
 
 // Restore initial board and move history if coming from lobby
 const startBoard = sessionStorage.getItem('startBoard');
@@ -34,8 +36,8 @@ const startFirstTurn = sessionStorage.getItem('startFirstTurn');
 socket.on('connect', () => {
   mySocketId = socket.id;
   console.log('[game.js] My socket id:', mySocketId);
-  // Join the game room
-  socket.emit('joinGame', { room: roomCode });
+  // Join the game room and re-register color with server
+  socket.emit('joinGame', { room: roomCode, color: myColor });
 });
 
 // Listen for startGame with color assignment and first turn
@@ -44,13 +46,11 @@ socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveH
   console.log('[game.js] My socket id:', socket.id);
   console.log('[game.js] Color assignments:', colorAssignments);
 
-  // Assign my color if server sends it
+  // Assign my color if server sends it (should match sessionStorage)
   if (colorAssignments && socket.id in colorAssignments) {
     myColor = colorAssignments[socket.id];
+    sessionStorage.setItem('myAssignedColor', myColor);
     console.log('[game.js] My assigned color:', myColor);
-  } else {
-    myColor = null;
-    console.warn('[game.js] No color assigned for my socket!');
   }
   if (roles && roles[socket.id]) {
     myRole = roles[socket.id];
@@ -124,7 +124,6 @@ if (startBoard) {
   moveHistory = startMoveHistory ? JSON.parse(startMoveHistory) : [];
   currentPlayer = startFirstTurn || 'black';
   gameStarted = true;
-  // myColor will be set by startGame event!
   renderBoard();
   renderMoveHistory();
   updateStatus();

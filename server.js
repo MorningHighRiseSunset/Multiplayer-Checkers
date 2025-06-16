@@ -139,15 +139,21 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Fix: When a player joins the game, allow them to re-register their color if provided (for page reloads)
   socket.on('joinGame', ({ room, color }) => {
     currentRoom = room;
     socket.join(room);
-    if (rooms[room] && rooms[room].inGame) {
-      io.to(socket.id).emit('syncBoard', {
-        board: rooms[room].board,
-        currentPlayer: rooms[room].currentPlayer,
-        moveHistory: rooms[room].moveHistory
-      });
+    if (rooms[room]) {
+      if (color) {
+        rooms[room].colors[socket.id] = color;
+      }
+      if (rooms[room].inGame) {
+        io.to(socket.id).emit('syncBoard', {
+          board: rooms[room].board,
+          currentPlayer: rooms[room].currentPlayer,
+          moveHistory: rooms[room].moveHistory
+        });
+      }
     }
   });
 
