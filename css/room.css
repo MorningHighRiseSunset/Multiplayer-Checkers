@@ -7,12 +7,14 @@ body {
 
 #room-container {
   max-width: 480px;
-  margin: 40px auto 0 auto;
+  margin: 70px auto 0 auto;
   background: #fff;
   border-radius: 16px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.10);
   padding: 32px 24px 24px 24px;
   text-align: center;
+  position: relative;
+  z-index: 1;
 }
 
 h1 {
@@ -126,8 +128,15 @@ h1 {
   display: flex;
   gap: 18px;
   position: absolute;
-  top: 12px;
-  left: 12px;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fffbe6;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  padding: 8px 18px;
+  z-index: 2;
+  border: 1.5px solid #ffe066;
 }
 
 .player-status {
@@ -136,12 +145,19 @@ h1 {
   gap: 6px;
 }
 
-.profile-pic {
+.profile-pic-emoji {
+  font-size: 20px;
   width: 28px;
   height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 50%;
   border: 2px solid #bbb;
   background: #eee;
+  margin-right: 2px;
+  vertical-align: middle;
+  box-sizing: border-box;
 }
 
 .status-dot {
@@ -209,18 +225,4 @@ h1 {
 
 #chat-form button:hover {
   background: #8d652c;
-}
-
-.profile-pic-emoji {
-  font-size: 28px;
-  display: inline-block;
-  width: 28px;
-  height: 28px;
-  text-align: center;
-  line-height: 28px;
-  border-radius: 50%;
-  border: 2px solid #bbb;
-  background: #eee;
-  margin-right: 2px;
-  vertical-align: middle;
 }
