@@ -13,18 +13,19 @@ const playerStatus = {
   red: document.querySelector('#player-red .status'),
   black: document.querySelector('#player-black .status')
 };
+const dotRed = document.getElementById('dot-red');
+const dotBlack = document.getElementById('dot-black');
 
 let myRole = null;
 let myColor = null;
 let iAmReady = false;
 let opponentReady = false;
 
-// Join the room
+// Join the room (for both host and guest)
 socket.emit('joinRoom', roomCode);
 
 // Listen for role assignment and room state
 socket.on('roomState', (state) => {
-  // Defensive: ensure state and state.roles exist
   if (!state || !state.roles) return;
 
   // Find my role
@@ -34,6 +35,15 @@ socket.on('roomState', (state) => {
       break;
     }
   }
+
+  // Show green dots for present players
+  dotRed.classList.remove('active');
+  dotBlack.classList.remove('active');
+  for (const [sockId, role] of Object.entries(state.roles)) {
+    if (role === 'Player 1') dotRed.classList.add('active');
+    if (role === 'Player 2') dotBlack.classList.add('active');
+  }
+
   // Show notification if both players are present
   const roles = Object.values(state.roles);
   if (roles.length === 2) {
@@ -42,14 +52,13 @@ socket.on('roomState', (state) => {
     roomStatus.textContent = "Waiting for another player to join...";
   }
 
-  // Reset pick buttons and statuses
+  // Only disable pick buttons for colors that are already picked
   pickBtns.forEach(b => {
     b.disabled = false;
     b.textContent = "Pick";
     playerStatus[b.dataset.color].textContent = "";
   });
 
-  // Defensive: ensure state.colors exists
   let pickedColors = {};
   if (state.colors) {
     for (const [sockId, color] of Object.entries(state.colors)) {
@@ -57,7 +66,6 @@ socket.on('roomState', (state) => {
     }
   }
 
-  // Update pick buttons
   if (pickedColors.red) {
     pickBtns.forEach(b => {
       if (b.dataset.color === 'red') {
@@ -91,6 +99,8 @@ socket.on('roomState', (state) => {
   if (pickedColors.red && pickedColors.black && myColor && pickedColors.red !== pickedColors.black) {
     readyBtn.disabled = false;
     roomStatus.textContent = "Both players picked! Click Ready when ready.";
+  } else {
+    readyBtn.disabled = true;
   }
 });
 
