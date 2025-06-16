@@ -159,14 +159,24 @@ io.on('connection', (socket) => {
     }
   });
 
-  // When a player joins the game, allow them to re-register their color if provided (for page reloads)
-  socket.on('joinGame', ({ room, color }) => {
+  // When a player joins the game, allow them to re-register their color and role if provided (for page reloads)
+  socket.on('joinGame', ({ room, color, role }) => {
     currentRoom = room;
     socket.join(room);
     if (rooms[room]) {
-      if (color) {
-        rooms[room].colors[socket.id] = color;
+      // Remove any old socket ID with the same color or role
+      for (const [sockId, col] of Object.entries(rooms[room].colors)) {
+        if ((col === color || rooms[room].roles[sockId] === role) && sockId !== socket.id) {
+          if (rooms[room].roles[sockId]) {
+            rooms[room].roles[socket.id] = rooms[room].roles[sockId];
+            delete rooms[room].roles[sockId];
+          }
+          delete rooms[room].colors[sockId];
+          delete rooms[room].ready[sockId];
+        }
       }
+      rooms[room].colors[socket.id] = color;
+      if (role) rooms[room].roles[socket.id] = role;
       if (rooms[room].inGame) {
         io.to(socket.id).emit('syncBoard', {
           board: rooms[room].board,

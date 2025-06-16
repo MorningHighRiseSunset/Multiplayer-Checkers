@@ -14,6 +14,11 @@ function randomRoomCode() {
   return code;
 }
 
+// Helper: Validate room code format
+function isValidRoomCode(code) {
+  return /^[A-Z2-9]{6,10}$/.test(code);
+}
+
 if (createBtn) {
   createBtn.onclick = () => {
     const code = randomRoomCode();
@@ -38,9 +43,43 @@ if (joinBtn) {
       if (lobbyStatus) lobbyStatus.textContent = 'Please enter a room code.';
       return;
     }
-    if (lobbyStatus) lobbyStatus.textContent = 'Joining game...';
+    if (!isValidRoomCode(code)) {
+      if (lobbyStatus) lobbyStatus.textContent = 'Invalid room code format.';
+      return;
+    }
+    lobbyStatus.textContent = 'Checking room...';
+
+    // Try to connect to the room and check if it exists before redirecting
+    socket.emit('joinRoom', code);
+
+    // Listen for room state or error just once
+    const handleRoomState = (state) => {
+      if (state && state.roles && Object.keys(state.roles).length > 0) {
+        lobbyStatus.textContent = 'Joining game...';
+        setTimeout(() => {
+          window.location.href = `room.html?room=${code}`;
+        }, 600);
+      } else {
+        lobbyStatus.textContent = 'Room not found or not available.';
+      }
+      socket.off('roomState', handleRoomState);
+      socket.off('roomStatus', handleRoomStatus);
+    };
+
+    const handleRoomStatus = ({ msg }) => {
+      lobbyStatus.textContent = msg || 'Room not found or not available.';
+      socket.off('roomState', handleRoomState);
+      socket.off('roomStatus', handleRoomStatus);
+    };
+
+    socket.once('roomState', handleRoomState);
+    socket.once('roomStatus', handleRoomStatus);
+
+    // Timeout fallback in case no response
     setTimeout(() => {
-      window.location.href = `room.html?room=${code}`;
-    }, 800);
+      lobbyStatus.textContent = 'Room not found or not available.';
+      socket.off('roomState', handleRoomState);
+      socket.off('roomStatus', handleRoomStatus);
+    }, 2500);
   };
 }

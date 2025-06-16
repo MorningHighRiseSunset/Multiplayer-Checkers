@@ -33,6 +33,8 @@ colorButtons.forEach(btn => {
     btn.classList.add('selected');
     statusDiv.textContent = `You picked ${myColorPick}`;
     readyBtn.disabled = false;
+    // Save color pick in sessionStorage for redundancy
+    sessionStorage.setItem('myColorPick', myColorPick);
   };
 });
 
@@ -58,6 +60,8 @@ socket.on('roomState', ({ roles, colors }) => {
 
 // Ready button
 readyBtn.onclick = () => {
+  // Always check color pick before ready
+  myColorPick = myColorPick || sessionStorage.getItem('myColorPick');
   if (!myColorPick) {
     statusDiv.textContent = "Pick a color first!";
     console.log('[room.js] Tried to ready without picking color');
@@ -76,6 +80,7 @@ leaveBtn.onclick = () => {
   sessionStorage.removeItem('myAssignedColor');
   sessionStorage.removeItem('myRole');
   sessionStorage.removeItem('startFirstTurn');
+  sessionStorage.removeItem('myColorPick');
   window.location.href = 'lobby.html';
 };
 
@@ -84,11 +89,28 @@ socket.on('startGame', ({ colorAssignments, firstTurn, roles }) => {
   console.log('[room.js] startGame event:', { colorAssignments, firstTurn, roles, mySocketId: socket.id });
   myAssignedColor = colorAssignments[socket.id];
   myRole = roles[socket.id];
+  // Fallback: If not found, try to match by color pick
+  if (!myAssignedColor && colorAssignments) {
+    for (const [id, color] of Object.entries(colorAssignments)) {
+      if (color === myColorPick) {
+        myAssignedColor = color;
+        myRole = roles[id];
+        break;
+      }
+    }
+  }
+  // Save to sessionStorage
   sessionStorage.setItem('myAssignedColor', myAssignedColor);
   sessionStorage.setItem('myRole', myRole);
   sessionStorage.setItem('startFirstTurn', firstTurn);
   console.log('[room.js] Assigned color:', myAssignedColor, 'Assigned role:', myRole);
-  window.location.href = `game.html?room=${roomCode}`;
+  // Double-check before redirect
+  if (myAssignedColor && myRole) {
+    window.location.href = `game.html?room=${roomCode}`;
+  } else {
+    statusDiv.textContent = "Error: Could not assign color/role. Please rejoin the room.";
+    console.error('[room.js] ERROR: Could not assign color/role.', { colorAssignments, roles, myColorPick });
+  }
 });
 
 // Listen for opponent ready
@@ -128,6 +150,18 @@ socket.on('roomStatus', ({ msg }) => {
 // On page load, join the room
 console.log('[room.js] Emitting joinRoom:', roomCode);
 socket.emit('joinRoom', roomCode);
+
+// Handle socket reconnect (e.g. after network blip or tab reload)
+socket.on('connect', () => {
+  console.log('[room.js] Socket connected:', socket.id);
+  // Optionally, re-emit color pick if we have it
+  const storedColor = sessionStorage.getItem('myColorPick');
+  if (storedColor && !myColorPick) {
+    myColorPick = storedColor;
+    socket.emit('pickColor', { room: roomCode, color: myColorPick });
+    console.log('[room.js] Re-emitted pickColor after reconnect:', myColorPick);
+  }
+});
 
 // --- Chat box logic ---
 const chatForm = document.getElementById('chat-form');

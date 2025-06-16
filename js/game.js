@@ -56,9 +56,9 @@ const startFirstTurn = sessionStorage.getItem('startFirstTurn');
 socket.on('connect', () => {
   mySocketId = socket.id;
   console.log('[game.js] Connected to server. socket.id:', mySocketId);
-  // Join the game room and re-register color with server
-  socket.emit('joinGame', { room: roomCode, color: myColor });
-  console.log('[game.js] Emitted joinGame:', { room: roomCode, color: myColor });
+  // Join the game room and re-register color and role with server
+  socket.emit('joinGame', { room: roomCode, color: myColor, role: myRole });
+  console.log('[game.js] Emitted joinGame:', { room: roomCode, color: myColor, role: myRole });
 });
 
 // Listen for startGame with color assignment and first turn
