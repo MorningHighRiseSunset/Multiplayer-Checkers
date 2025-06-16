@@ -13,8 +13,8 @@ const playerStatus = {
   red: document.querySelector('#player-red .status'),
   black: document.querySelector('#player-black .status')
 };
-const dotRed = document.getElementById('dot-red');
-const dotBlack = document.getElementById('dot-black');
+const dotPlayer1 = document.getElementById('dot-player1');
+const dotPlayer2 = document.getElementById('dot-player2');
 
 let myRole = null;
 let myColor = null;
@@ -36,12 +36,12 @@ socket.on('roomState', (state) => {
     }
   }
 
-  // Show green dots for present players
-  dotRed.classList.remove('active');
-  dotBlack.classList.remove('active');
+  // Show green dots for present players in status bar
+  dotPlayer1.classList.remove('active');
+  dotPlayer2.classList.remove('active');
   for (const [sockId, role] of Object.entries(state.roles)) {
-    if (role === 'Player 1') dotRed.classList.add('active');
-    if (role === 'Player 2') dotBlack.classList.add('active');
+    if (role === 'Player 1') dotPlayer1.classList.add('active');
+    if (role === 'Player 2') dotPlayer2.classList.add('active');
   }
 
   // Show notification if both players are present
@@ -66,34 +66,20 @@ socket.on('roomState', (state) => {
     }
   }
 
-  if (pickedColors.red) {
-    pickBtns.forEach(b => {
-      if (b.dataset.color === 'red') {
-        b.disabled = true;
-        if (myColor === 'red') {
-          b.textContent = "You";
-          playerStatus.red.textContent = "You picked this!";
-        } else {
-          b.textContent = "Opponent";
-          playerStatus.red.textContent = "Opponent picked this!";
-        }
-      }
-    });
-  }
-  if (pickedColors.black) {
-    pickBtns.forEach(b => {
-      if (b.dataset.color === 'black') {
-        b.disabled = true;
-        if (myColor === 'black') {
-          b.textContent = "You";
-          playerStatus.black.textContent = "You picked this!";
-        } else {
-          b.textContent = "Opponent";
-          playerStatus.black.textContent = "Opponent picked this!";
-        }
-      }
-    });
-  }
+  // Disable a color if it's already picked by anyone else
+  pickBtns.forEach(b => {
+    const color = b.dataset.color;
+    if (pickedColors[color] && (!myColor || myColor !== color)) {
+      b.disabled = true;
+      b.textContent = "Opponent";
+      playerStatus[color].textContent = "Opponent picked this!";
+    }
+    if (myColor === color) {
+      b.disabled = true;
+      b.textContent = "You";
+      playerStatus[color].textContent = "You picked this!";
+    }
+  });
 
   // Enable ready if both colors are picked and not the same
   if (pickedColors.red && pickedColors.black && myColor && pickedColors.red !== pickedColors.black) {
