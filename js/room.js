@@ -13,6 +13,8 @@ const leaveBtn = document.getElementById('leave-btn');
 const statusDiv = document.getElementById('room-status');
 const roomCodeDiv = document.getElementById('room-code');
 
+console.log('[room.js] Loaded. roomCode:', roomCode);
+
 // Show only the room code, copyable
 if (roomCodeDiv && roomCode) {
   roomCodeDiv.innerHTML = `
@@ -25,6 +27,7 @@ if (roomCodeDiv && roomCode) {
 colorButtons.forEach(btn => {
   btn.onclick = () => {
     myColorPick = btn.dataset.color;
+    console.log('[room.js] Color picked:', myColorPick);
     socket.emit('pickColor', { room: roomCode, color: myColorPick });
     colorButtons.forEach(b => b.disabled = true);
     btn.classList.add('selected');
@@ -35,11 +38,13 @@ colorButtons.forEach(btn => {
 
 // Listen for color picked
 socket.on('colorPicked', ({ color }) => {
+  console.log('[room.js] colorPicked event:', color);
   statusDiv.textContent = `A player picked ${color}`;
 });
 
 // Listen for room state updates (for status dots)
 socket.on('roomState', ({ roles, colors }) => {
+  console.log('[room.js] roomState event:', { roles, colors });
   // Reset dots
   const dot1 = document.getElementById('dot-player1');
   const dot2 = document.getElementById('dot-player2');
@@ -55,8 +60,10 @@ socket.on('roomState', ({ roles, colors }) => {
 readyBtn.onclick = () => {
   if (!myColorPick) {
     statusDiv.textContent = "Pick a color first!";
+    console.log('[room.js] Tried to ready without picking color');
     return;
   }
+  console.log('[room.js] Ready clicked. Emitting playerReady:', { room: roomCode, color: myColorPick });
   socket.emit('playerReady', { room: roomCode, color: myColorPick });
   readyBtn.disabled = true;
   statusDiv.textContent = "Waiting for other player...";
@@ -64,6 +71,7 @@ readyBtn.onclick = () => {
 
 // Leave button
 leaveBtn.onclick = () => {
+  console.log('[room.js] Leave Room clicked');
   socket.emit('leaveRoom', { room: roomCode });
   sessionStorage.removeItem('myAssignedColor');
   sessionStorage.removeItem('myRole');
@@ -73,43 +81,52 @@ leaveBtn.onclick = () => {
 
 // Listen for both players ready and color assignments
 socket.on('startGame', ({ colorAssignments, firstTurn, roles }) => {
+  console.log('[room.js] startGame event:', { colorAssignments, firstTurn, roles, mySocketId: socket.id });
   myAssignedColor = colorAssignments[socket.id];
   myRole = roles[socket.id];
   sessionStorage.setItem('myAssignedColor', myAssignedColor);
   sessionStorage.setItem('myRole', myRole);
   sessionStorage.setItem('startFirstTurn', firstTurn);
+  console.log('[room.js] Assigned color:', myAssignedColor, 'Assigned role:', myRole);
   window.location.href = `game.html?room=${roomCode}`;
 });
 
 // Listen for opponent ready
 socket.on('opponentReady', ({ color }) => {
+  console.log('[room.js] opponentReady event:', color);
   statusDiv.textContent = `Opponent is ready (${color})`;
 });
 
 // Listen for both players picked
 socket.on('bothPicked', () => {
+  console.log('[room.js] bothPicked event');
   statusDiv.textContent = "Both players picked colors. Click Ready!";
 });
 
 // Listen for both players ready
 socket.on('bothReady', () => {
+  console.log('[room.js] bothReady event');
   statusDiv.textContent = "Both players are ready. Starting game...";
 });
 
 // Listen for player joined/left
 socket.on('playerJoined', ({ role }) => {
+  console.log('[room.js] playerJoined event:', role);
   statusDiv.textContent = `${role} joined the room.`;
 });
 socket.on('playerLeft', ({ role }) => {
+  console.log('[room.js] playerLeft event:', role);
   statusDiv.textContent = `${role} left the room.`;
 });
 
 // Show error if both pick the same color
 socket.on('roomStatus', ({ msg }) => {
+  console.log('[room.js] roomStatus event:', msg);
   statusDiv.textContent = msg;
 });
 
 // On page load, join the room
+console.log('[room.js] Emitting joinRoom:', roomCode);
 socket.emit('joinRoom', roomCode);
 
 // --- Chat box logic ---
@@ -126,11 +143,13 @@ if (chatForm && chatInput && chatMessages) {
       appendChatMessage(senderLabel, msg);
       socket.emit('chatMessage', { room: roomCode, msg });
       chatInput.value = '';
+      console.log('[room.js] Chat message sent:', msg);
     }
   });
 
   socket.on('chatMessage', ({ sender, msg }) => {
     appendChatMessage(sender, msg);
+    console.log('[room.js] Chat message received:', sender, msg);
   });
 
   function appendChatMessage(sender, msg) {

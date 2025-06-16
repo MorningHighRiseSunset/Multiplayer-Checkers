@@ -8,6 +8,10 @@ let myColor = sessionStorage.getItem('myAssignedColor');
 let myRole = sessionStorage.getItem('myRole');
 let mySocketId = null;
 
+console.log('[game.js] Loaded. roomCode:', roomCode);
+console.log('[game.js] myColor from sessionStorage:', myColor);
+console.log('[game.js] myRole from sessionStorage:', myRole);
+
 const boardSize = 8;
 const boardDiv = document.getElementById('game-board');
 const statusDiv = document.getElementById('game-status');
@@ -24,6 +28,7 @@ if (!leaveBtn) {
 }
 
 leaveBtn.onclick = () => {
+  console.log('[game.js] Leave Game clicked');
   socket.emit('leaveGame', { room: roomCode, color: myColor });
   window.location.href = 'lobby.html';
 };
@@ -50,20 +55,25 @@ const startFirstTurn = sessionStorage.getItem('startFirstTurn');
 // Get my socket id after connecting
 socket.on('connect', () => {
   mySocketId = socket.id;
+  console.log('[game.js] Connected to server. socket.id:', mySocketId);
   // Join the game room and re-register color with server
   socket.emit('joinGame', { room: roomCode, color: myColor });
+  console.log('[game.js] Emitted joinGame:', { room: roomCode, color: myColor });
 });
 
 // Listen for startGame with color assignment and first turn
 socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveHistory: serverHistory, roles }) => {
+  console.log('[game.js] startGame event received:', { colorAssignments, firstTurn, roles });
   // Assign my color if server sends it (should match sessionStorage)
   if (colorAssignments && socket.id in colorAssignments) {
     myColor = colorAssignments[socket.id];
     sessionStorage.setItem('myAssignedColor', myColor);
+    console.log('[game.js] Assigned myColor from server:', myColor);
   }
   if (roles && roles[socket.id]) {
     myRole = roles[socket.id];
     sessionStorage.setItem('myRole', myRole);
+    console.log('[game.js] Assigned myRole from server:', myRole);
   }
   currentPlayer = firstTurn || 'black';
   isMyTurn = (myColor === currentPlayer);
@@ -79,6 +89,7 @@ socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveH
 
 // Sync board state from server
 socket.on('syncBoard', ({ board: serverBoard, currentPlayer: serverCurrent, moveHistory: serverHistory }) => {
+  console.log('[game.js] syncBoard event received');
   if (serverBoard) board = JSON.parse(JSON.stringify(serverBoard));
   if (serverCurrent) currentPlayer = serverCurrent;
   if (serverHistory) moveHistory = [...serverHistory];
@@ -94,6 +105,7 @@ socket.on('syncBoard', ({ board: serverBoard, currentPlayer: serverCurrent, move
 
 // Listen for opponent leaving
 socket.on('opponentLeft', () => {
+  console.log('[game.js] opponentLeft event received');
   // Calculate points for the player who stayed
   const myPoints = countPieces(myColor);
   showEndGameScreen(`Opponent left. You win!`, myPoints);
@@ -101,11 +113,13 @@ socket.on('opponentLeft', () => {
 
 // Listen for game reset
 socket.on('resetGame', () => {
+  console.log('[game.js] resetGame event received');
   initBoard();
 });
 
 // Initialize board with pieces
 function initBoard() {
+  console.log('[game.js] initBoard called');
   board = [];
   for (let row = 0; row < boardSize; row++) {
     let rowArr = [];
@@ -131,6 +145,7 @@ function initBoard() {
 
 // If coming from lobby, use the board and move history from sessionStorage
 if (startBoard) {
+  console.log('[game.js] startBoard found in sessionStorage');
   board = JSON.parse(startBoard);
   moveHistory = startMoveHistory ? JSON.parse(startMoveHistory) : [];
   currentPlayer = startFirstTurn || 'black';
@@ -195,12 +210,15 @@ function updateStatus() {
   }
   if (!gameStarted) {
     statusDiv.textContent = "Waiting for both players to be ready...";
+    console.log('[game.js] Status: Waiting for both players to be ready...');
     return;
   }
   if (isMyTurn) {
     statusDiv.textContent = `Your turn (${myColor})`;
+    console.log('[game.js] Status: Your turn', myColor);
   } else {
     statusDiv.textContent = `Opponent's turn (${currentPlayer})`;
+    console.log('[game.js] Status: Opponent\'s turn', currentPlayer);
   }
 }
 
@@ -266,6 +284,7 @@ function onSquareClick(e) {
 
 // Send move to server, let server update board and broadcast to both players
 function sendMoveToServer(from, to, move) {
+  console.log('[game.js] Sending move to server:', { from, to, move });
   socket.emit('move', {
     room: roomCode,
     from,
@@ -312,6 +331,7 @@ function checkGameOver() {
     const points = countPieces(winnerColor);
     showEndGameScreen(`${winner} wins!`, points);
     gameEnded = true;
+    console.log('[game.js] Game over:', winner, 'wins');
   }
 }
 
@@ -338,6 +358,7 @@ function showEndGameScreen(message, points) {
       window.location.href = 'lobby.html';
     };
   }
+  console.log('[game.js] showEndGameScreen:', message, points);
 }
 
 // Print button (prints move history)
@@ -371,6 +392,7 @@ printBtn.onclick = () => {
 
 // Leave game if window/tab closed
 window.addEventListener('beforeunload', () => {
+  console.log('[game.js] beforeunload: leaving game');
   socket.emit('leaveGame', { room: roomCode, color: myColor });
 });
 
@@ -385,11 +407,13 @@ if (chatForm && chatInput && chatMessages) {
       appendChatMessage(senderLabel, msg);
       socket.emit('chatMessage', { room: roomCode, msg });
       chatInput.value = '';
+      console.log('[game.js] Chat message sent:', msg);
     }
   });
 
   socket.on('chatMessage', ({ sender, msg }) => {
     appendChatMessage(sender, msg);
+    console.log('[game.js] Chat message received:', sender, msg);
   });
 
   function appendChatMessage(sender, msg) {
@@ -402,5 +426,6 @@ if (chatForm && chatInput && chatMessages) {
 
 // Initialize game if not coming from lobby
 if (!startBoard) {
+  console.log('[game.js] No startBoard in sessionStorage, calling initBoard');
   initBoard();
 }
