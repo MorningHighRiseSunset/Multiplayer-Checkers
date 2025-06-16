@@ -25,6 +25,12 @@ let myRole = null;
 let myColor = null;
 let iAmReady = false;
 let opponentReady = false;
+let mySocketId = null;
+
+// Track our socket ID for color assignment
+socket.on('connect', () => {
+  mySocketId = socket.id;
+});
 
 // Join the room (for both host and guest)
 socket.emit('joinRoom', roomCode);
@@ -131,18 +137,28 @@ socket.on('opponentReady', ({ color }) => {
   playerStatus[color].textContent = "Opponent is ready!";
   if (iAmReady) {
     roomStatus.textContent = "Both players ready! Starting game...";
-    setTimeout(() => {
-      window.location.href = `game.html?room=${roomCode}&color=${myColor}`;
-    }, 1200);
   }
 });
 
 // Listen for both ready (for the player who is second to be ready)
 socket.on('bothReady', () => {
   roomStatus.textContent = "Both players ready! Starting game...";
-  setTimeout(() => {
-    window.location.href = `game.html?room=${roomCode}&color=${myColor}`;
-  }, 1200);
+});
+
+// Listen for startGame with color assignments
+socket.on('startGame', ({ colorAssignments, firstTurn }) => {
+  // Find my color from the assignments
+  const myColorAssigned = colorAssignments && colorAssignments[socket.id];
+  if (myColorAssigned) {
+    setTimeout(() => {
+      window.location.href = `game.html?room=${roomCode}&color=${myColorAssigned}`;
+    }, 1200);
+  } else {
+    // fallback: just use myColor
+    setTimeout(() => {
+      window.location.href = `game.html?room=${roomCode}&color=${myColor}`;
+    }, 1200);
+  }
 });
 
 // Listen for opponent leaving (fallback)

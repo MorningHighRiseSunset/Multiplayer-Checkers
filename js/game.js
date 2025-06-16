@@ -1,6 +1,6 @@
 // --- Multiplayer Game Logic with Socket.IO ---
 
-const socket = io('https://multiplayer-checkers.onrender.com'); // Change to your deployed server URL
+const socket = io('https://multiplayer-checkers.onrender.com');
 
 const params = new URLSearchParams(window.location.search);
 const roomCode = params.get('room');
@@ -14,7 +14,7 @@ const newGameBtn = document.getElementById('new-game-btn');
 const printBtn = document.getElementById('print-btn');
 
 let board = [];
-let currentPlayer = 'red';
+let currentPlayer = 'black'; // Black goes first by default
 let selected = null;
 let validMoves = [];
 let moveHistory = [];
@@ -23,9 +23,9 @@ let isMyTurn = false;
 // Join the game room
 socket.emit('joinGame', { room: roomCode, color: myColor });
 
-// Listen for turn assignment
+// Listen for turn assignment and color assignment
 socket.on('startGame', ({ firstTurn }) => {
-  currentPlayer = firstTurn;
+  currentPlayer = firstTurn || 'black';
   isMyTurn = (myColor === currentPlayer);
   renderBoard();
   updateStatus();
@@ -44,6 +44,11 @@ socket.on('opponentLeft', () => {
   window.location.href = 'lobby.html';
 });
 
+// Listen for game reset
+socket.on('resetGame', () => {
+  initBoard();
+});
+
 // Initialize board with pieces
 function initBoard() {
   board = [];
@@ -60,7 +65,7 @@ function initBoard() {
     }
     board.push(rowArr);
   }
-  currentPlayer = 'red';
+  currentPlayer = 'black';
   selected = null;
   validMoves = [];
   moveHistory = [];

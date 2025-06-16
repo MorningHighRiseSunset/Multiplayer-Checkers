@@ -77,9 +77,20 @@ io.on('connection', (socket) => {
     if (!rooms[room]) return;
     rooms[room].ready[socket.id] = true;
     socket.to(room).emit('opponentReady', { color });
+
+    // If both players are ready, start the game and send color assignments
     if (Object.keys(rooms[room].ready).length === 2) {
+      // Build color assignment map
+      const colorAssignments = {};
+      for (const [sockId, pickedColor] of Object.entries(rooms[room].colors)) {
+        colorAssignments[sockId] = pickedColor;
+      }
+      // Determine who is black (black goes first)
+      let firstTurn = 'black';
       io.to(room).emit('bothReady');
-      io.to(room).emit('startGame', { firstTurn: 'red' });
+      io.to(room).emit('startGame', { colorAssignments, firstTurn });
+      // Mark room as "inGame" to suppress leave notifications
+      rooms[room].inGame = true;
     }
   });
 
@@ -105,7 +116,10 @@ io.on('connection', (socket) => {
       delete rooms[room].colors[socket.id];
       delete rooms[room].roles[socket.id];
       broadcastRoomState(room);
-      socket.to(room).emit('playerLeft', { role: leftRole });
+      // Only notify if not in game
+      if (!rooms[room].inGame) {
+        socket.to(room).emit('playerLeft', { role: leftRole });
+      }
       if (
         Object.keys(rooms[room].players).length === 0 &&
         Object.keys(rooms[room].ready).length === 0 &&
@@ -135,7 +149,10 @@ io.on('connection', (socket) => {
       delete rooms[currentRoom].colors[socket.id];
       delete rooms[currentRoom].roles[socket.id];
       broadcastRoomState(currentRoom);
-      socket.to(currentRoom).emit('playerLeft', { role: leftRole });
+      // Only notify if not in game
+      if (!rooms[currentRoom].inGame) {
+        socket.to(currentRoom).emit('playerLeft', { role: leftRole });
+      }
       if (
         Object.keys(rooms[currentRoom].players).length === 0 &&
         Object.keys(rooms[currentRoom].ready).length === 0 &&
