@@ -138,9 +138,7 @@ function renderBoard() {
 
   // Always render red at the bottom, black at the top
   for (let displayRow = 0; displayRow < boardSize; displayRow++) {
-    let row = displayRow;
-    // Flip the board so red is always at the bottom
-    row = boardSize - 1 - displayRow;
+    let row = boardSize - 1 - displayRow; // flip so red is always at the bottom
     for (let col = 0; col < boardSize; col++) {
       const square = document.createElement('div');
       square.className = 'square ' + ((row + col) % 2 === 1 ? 'dark' : 'light');
@@ -238,7 +236,7 @@ function onSquareClick(e) {
 
   if (selected && validMoves.some(m => m.row === row && m.col === col)) {
     const move = validMoves.find(m => m.row === row && m.col === col);
-    makeMove(selected, { row, col }, move, true);
+    sendMoveToServer(selected, { row, col }, move);
     selected = null;
     validMoves = [];
     renderBoard();
@@ -250,59 +248,17 @@ function onSquareClick(e) {
   renderBoard();
 }
 
-// Make a move
-function makeMove(from, to, move, sendToServer) {
-  const piece = board[from.row][from.col];
-  board[to.row][to.col] = piece;
-  board[from.row][from.col] = null;
-  let becameKing = false;
-  if ((piece.color === 'red' && to.row === 0) || (piece.color === 'black' && to.row === boardSize - 1)) {
-    if (!piece.king) {
-      piece.king = true;
-      becameKing = true;
-    }
-  }
-  if (move.jump) {
-    const { row: jr, col: jc } = move.jumped;
-    board[jr][jc] = null;
-    // Multi-jump
-    selected = { row: to.row, col: to.col };
-    validMoves = getValidMoves(to.row, to.col, true);
-    if (validMoves.length > 0 && !becameKing) {
-      renderBoard();
-      return;
-    }
-  }
-  // Record move in history
-  moveHistory.push(
-    `${capitalize(currentPlayer)}: (${from.row},${from.col}) → (${to.row},${to.col})${move.jump ? ' (jump)' : ''}${becameKing ? ' (king)' : ''}`
-  );
-  renderMoveHistory();
-
-  // Send move to server if it's my move
-  if (sendToServer) {
-    console.log('[game.js] Sending move to server:', { from, to, move });
-    socket.emit('move', {
-      room: roomCode,
-      from,
-      to,
-      move
-    });
-    isMyTurn = false;
-    updateStatus();
-  }
-
-  // Check for win
-  if (isGameOver()) {
-    statusDiv.textContent = `${capitalize(currentPlayer)} wins!`;
-    boardDiv.querySelectorAll('.square').forEach(sq => sq.removeEventListener('click', onSquareClick));
-    return;
-  }
-
-  currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
-  selected = null;
-  validMoves = [];
-  renderBoard();
+// Send move to server, let server update board and broadcast to both players
+function sendMoveToServer(from, to, move) {
+  console.log('[game.js] Sending move to server:', { from, to, move });
+  socket.emit('move', {
+    room: roomCode,
+    from,
+    to,
+    move
+  });
+  isMyTurn = false;
+  updateStatus();
 }
 
 function renderMoveHistory() {
