@@ -34,11 +34,17 @@ socket.on('colorPicked', ({ color }) => {
 socket.on('roomState', ({ roles, colors }) => {
   if (!playersDiv) return;
   playersDiv.innerHTML = '';
+  // Reset dots
+  document.getElementById('dot-player1').classList.remove('active');
+  document.getElementById('dot-player2').classList.remove('active');
   for (const [sockId, role] of Object.entries(roles)) {
     const color = colors[sockId] || 'not picked';
     const li = document.createElement('li');
     li.textContent = `${role}: ${color}`;
     playersDiv.appendChild(li);
+    // Light up the dot for this player
+    if (role === 'Player 1') document.getElementById('dot-player1').classList.add('active');
+    if (role === 'Player 2') document.getElementById('dot-player2').classList.add('active');
   }
 });
 
