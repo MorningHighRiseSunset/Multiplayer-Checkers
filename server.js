@@ -29,8 +29,8 @@ process.on('unhandledRejection', err => {
 function broadcastRoomState(room) {
   if (!rooms[room]) return;
   const state = {
-    players: Object.values(rooms[room].roles), // ['Player 1', 'Player 2']
-    roles: rooms[room].roles // {socketId: 'Player 1', ...}
+    roles: rooms[room].roles, // {socketId: 'Player 1', ...}
+    colors: rooms[room].colors // {socketId: 'red', ...}
   };
   io.to(room).emit('roomState', state);
 }
@@ -120,6 +120,11 @@ io.on('connection', (socket) => {
   socket.on('leaveGame', ({ room }) => {
     socket.leave(room);
     socket.to(room).emit('opponentLeft');
+  });
+
+  socket.on('chatMessage', ({ room, msg }) => {
+    const sender = (rooms[room] && rooms[room].roles && rooms[room].roles[socket.id]) || 'Player';
+    socket.to(room).emit('chatMessage', { sender, msg });
   });
 
   socket.on('disconnect', () => {
