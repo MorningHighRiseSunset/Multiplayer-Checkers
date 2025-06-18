@@ -147,7 +147,21 @@ h1 {
   padding-left: 20px;
   color: #fff;
   font-size: 1em;
-  text-align: left; /* Ensures left alignment */
+  text-align: left;
+  max-height: 180px;      /* Add a max height */
+  overflow-y: auto;       /* Enable vertical scrollbar if needed */
+  scrollbar-width: thin;  /* For Firefox */
+  scrollbar-color: #ffd700 #333;
+}
+
+/* Optional: Style the scrollbar for Webkit browsers */
+#move-history::-webkit-scrollbar {
+  width: 7px;
+  background: #333;
+}
+#move-history::-webkit-scrollbar-thumb {
+  background: #ffd700;
+  border-radius: 4px;
 }
 
 #move-history li {
@@ -304,4 +318,18 @@ h1 {
     font-size: 1em;
     padding: 7px 4px;
   }
+}
+
+/* Animate checker movement */
+.piece.moving {
+  transition: transform 0.7s cubic-bezier(.4,2,.6,1);
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* Highlight last moved checker */
+.square.last-move {
+  box-shadow: 0 0 0 4px #00e6e6 inset, 0 0 12px #00e6e6;
+  position: relative;
+  z-index: 2;
 }

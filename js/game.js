@@ -47,6 +47,9 @@ let isMyTurn = false;
 let gameStarted = false;
 let gameEnded = false;
 
+// Animation and highlight state
+let lastMove = null; // {from: {row,col}, to: {row,col}}
+
 // Restore initial board and move history if coming from lobby
 const startBoard = sessionStorage.getItem('startBoard');
 const startMoveHistory = sessionStorage.getItem('startMoveHistory');
@@ -62,7 +65,7 @@ socket.on('connect', () => {
 });
 
 // Listen for startGame with color assignment and first turn
-socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveHistory: serverHistory, roles }) => {
+socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveHistory: serverHistory, roles, lastMove: serverLastMove }) => {
   console.log('[game.js] startGame event received:', { colorAssignments, firstTurn, roles });
   // Assign my color if server sends it (should match sessionStorage)
   if (colorAssignments && socket.id in colorAssignments) {
@@ -81,24 +84,30 @@ socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveH
   gameEnded = false;
   if (serverBoard) board = JSON.parse(JSON.stringify(serverBoard));
   if (serverHistory) moveHistory = [...serverHistory];
+  if (serverLastMove) lastMove = serverLastMove;
+  else lastMove = null;
   renderBoard();
   renderMoveHistory();
+  highlightLastMove();
   updateStatus();
   checkGameOver();
 });
 
 // Sync board state from server
-socket.on('syncBoard', ({ board: serverBoard, currentPlayer: serverCurrent, moveHistory: serverHistory }) => {
+socket.on('syncBoard', ({ board: serverBoard, currentPlayer: serverCurrent, moveHistory: serverHistory, lastMove: serverLastMove }) => {
   console.log('[game.js] syncBoard event received');
   if (serverBoard) board = JSON.parse(JSON.stringify(serverBoard));
   if (serverCurrent) currentPlayer = serverCurrent;
   if (serverHistory) moveHistory = [...serverHistory];
+  if (serverLastMove) lastMove = serverLastMove;
+  else lastMove = null;
   selected = null;
   validMoves = [];
   gameStarted = true;
   isMyTurn = (myColor === currentPlayer);
   renderBoard();
   renderMoveHistory();
+  highlightLastMove();
   updateStatus();
   checkGameOver();
 });
@@ -138,8 +147,10 @@ function initBoard() {
   selected = null;
   validMoves = [];
   moveHistory = [];
+  lastMove = null;
   renderBoard();
   renderMoveHistory();
+  highlightLastMove();
   updateStatus();
 }
 
@@ -152,11 +163,70 @@ if (startBoard) {
   gameStarted = true;
   renderBoard();
   renderMoveHistory();
+  highlightLastMove();
   updateStatus();
   sessionStorage.removeItem('startBoard');
   sessionStorage.removeItem('startMoveHistory');
   sessionStorage.removeItem('startFirstTurn');
   myRole = sessionStorage.getItem('myRole') || null;
+}
+
+// --- Animation helpers ---
+function getSquareElement(row, col) {
+  return boardDiv.querySelector(`.square[data-row="${row}"][data-col="${col}"]`);
+}
+function getPieceElement(row, col) {
+  const sq = getSquareElement(row, col);
+  return sq ? sq.querySelector('.piece') : null;
+}
+
+// Animate a move from (fromRow,fromCol) to (toRow,toCol)
+function animateMove(from, to, callback) {
+  const fromSq = getSquareElement(from.row, from.col);
+  const toSq = getSquareElement(to.row, to.col);
+  if (!fromSq || !toSq) { callback && callback(); return; }
+  const piece = fromSq.querySelector('.piece');
+  if (!piece) { callback && callback(); return; }
+
+  // Get boardDiv's position for absolute offset
+  const fromRect = fromSq.getBoundingClientRect();
+  const toRect = toSq.getBoundingClientRect();
+
+  // Clone the piece for animation
+  const animPiece = piece.cloneNode(true);
+  animPiece.classList.add('moving');
+  animPiece.style.position = 'fixed';
+  animPiece.style.left = fromRect.left + 'px';
+  animPiece.style.top = fromRect.top + 'px';
+  animPiece.style.width = fromRect.width + 'px';
+  animPiece.style.height = fromRect.height + 'px';
+  animPiece.style.pointerEvents = 'none';
+  animPiece.style.zIndex = 1000;
+  document.body.appendChild(animPiece);
+
+  // Hide original piece during animation
+  piece.style.visibility = 'hidden';
+
+  // Animate to destination
+  requestAnimationFrame(() => {
+    animPiece.style.transform = `translate(${toRect.left - fromRect.left}px, ${toRect.top - fromRect.top}px)`;
+  });
+
+  setTimeout(() => {
+    document.body.removeChild(animPiece);
+    piece.style.visibility = '';
+    callback && callback();
+  }, 700);
+}
+
+// --- Highlight last moved checker ---
+function highlightLastMove() {
+  // Remove old highlights
+  boardDiv.querySelectorAll('.last-move').forEach(el => el.classList.remove('last-move'));
+  if (lastMove && lastMove.to) {
+    const sq = getSquareElement(lastMove.to.row, lastMove.to.col);
+    if (sq) sq.classList.add('last-move');
+  }
 }
 
 // Render the board (red always on bottom, black always on top)
@@ -175,6 +245,11 @@ function renderBoard() {
       square.dataset.col = col;
       square.style.width = '50px';
       square.style.height = '50px';
+
+      // Highlight last move
+      if (lastMove && lastMove.to && lastMove.to.row === row && lastMove.to.col === col) {
+        square.classList.add('last-move');
+      }
 
       if (selected && selected.row === row && selected.col === col) {
         square.classList.add('selected');
@@ -202,23 +277,48 @@ function renderBoard() {
   }
 }
 
-function updateStatus() {
-  if (gameEnded) return;
-  if (!myColor) {
-    statusDiv.textContent = "Spectator mode";
-    return;
+// --- Auto double-jump logic with animation ---
+function performMoveWithAnimation(from, to, move, callback) {
+  animateMove(from, to, () => {
+    // Actually update the board after animation
+    doMove(from, to, move);
+    renderBoard();
+    highlightLastMove();
+    setTimeout(() => {
+      // Check for further jumps (double-jump)
+      const piece = board[to.row][to.col];
+      if (move && move.jump && piece) {
+        const jumps = getValidMoves(to.row, to.col, true);
+        if (jumps.length > 0) {
+          // Auto-perform the first available jump (can be improved for multiple options)
+          const nextJump = jumps[0];
+          lastMove = { from: { ...to }, to: { row: nextJump.row, col: nextJump.col } };
+          performMoveWithAnimation(
+            { row: to.row, col: to.col },
+            { row: nextJump.row, col: nextJump.col },
+            nextJump,
+            callback
+          );
+          return;
+        }
+      }
+      callback && callback();
+    }, 100); // Small delay before next jump
+  });
+}
+
+// Actually update the board for a move (no animation)
+function doMove(from, to, move) {
+  const piece = board[from.row][from.col];
+  board[to.row][to.col] = piece;
+  board[from.row][from.col] = null;
+  // King me
+  if ((piece.color === 'red' && to.row === 0) || (piece.color === 'black' && to.row === boardSize - 1)) {
+    piece.king = true;
   }
-  if (!gameStarted) {
-    statusDiv.textContent = "Waiting for both players to be ready...";
-    console.log('[game.js] Status: Waiting for both players to be ready...');
-    return;
-  }
-  if (isMyTurn) {
-    statusDiv.textContent = `Your turn (${myColor})`;
-    console.log('[game.js] Status: Your turn', myColor);
-  } else {
-    statusDiv.textContent = `Opponent's turn (${currentPlayer})`;
-    console.log('[game.js] Status: Opponent\'s turn', currentPlayer);
+  // Remove jumped piece
+  if (move && move.jump && move.jumped) {
+    board[move.jumped.row][move.jumped.col] = null;
   }
 }
 
@@ -265,21 +365,30 @@ function onSquareClick(e) {
     selected = { row, col };
     validMoves = getValidMoves(row, col, hasAnyJumps(currentPlayer));
     renderBoard();
+    highlightLastMove();
     return;
   }
 
   if (selected && validMoves.some(m => m.row === row && m.col === col)) {
     const move = validMoves.find(m => m.row === row && m.col === col);
-    sendMoveToServer(selected, { row, col }, move);
+    isMyTurn = false;
+    lastMove = { from: { ...selected }, to: { row, col } };
+    performMoveWithAnimation(selected, { row, col }, move, () => {
+      // After all jumps, send the final move to server
+      sendMoveToServer(selected, { row, col }, move);
+      renderBoard();
+      highlightLastMove();
+      updateStatus();
+    });
     selected = null;
     validMoves = [];
-    renderBoard();
     return;
   }
 
   selected = null;
   validMoves = [];
   renderBoard();
+  highlightLastMove();
 }
 
 // Send move to server, let server update board and broadcast to both players
@@ -389,6 +498,26 @@ printBtn.onclick = () => {
   printWindow.print();
   printWindow.close();
 };
+
+function updateStatus() {
+  if (gameEnded) return;
+  if (!myColor) {
+    statusDiv.textContent = "Spectator mode";
+    return;
+  }
+  if (!gameStarted) {
+    statusDiv.textContent = "Waiting for both players to be ready...";
+    console.log('[game.js] Status: Waiting for both players to be ready...');
+    return;
+  }
+  if (isMyTurn) {
+    statusDiv.textContent = `Your turn (${myColor})`;
+    console.log('[game.js] Status: Your turn', myColor);
+  } else {
+    statusDiv.textContent = `Opponent's turn (${currentPlayer})`;
+    console.log('[game.js] Status: Opponent\'s turn', currentPlayer);
+  }
+}
 
 // Leave game if window/tab closed
 window.addEventListener('beforeunload', () => {
