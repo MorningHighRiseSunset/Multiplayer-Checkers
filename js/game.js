@@ -93,31 +93,51 @@ socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveH
   checkGameOver();
 });
 
-// Sync board state from server
+// --- Updated syncBoard to animate opponent's moves step-by-step ---
 socket.on('syncBoard', ({ board: serverBoard, currentPlayer: serverCurrent, moveHistory: serverHistory, lastMove: serverLastMove, color, role }) => {
   console.log('[game.js] syncBoard event received');
-  if (serverBoard) board = JSON.parse(JSON.stringify(serverBoard));
-  if (serverCurrent) currentPlayer = serverCurrent;
-  if (serverHistory) moveHistory = [...serverHistory];
-  if (serverLastMove) lastMove = serverLastMove;
-  else lastMove = null;
-  if (color) {
-    myColor = color;
-    sessionStorage.setItem('myAssignedColor', myColor);
+  // If this is not my move, animate the opponent's move
+  const isOpponentMove = (myColor !== currentPlayer);
+  if (serverLastMove && isOpponentMove) {
+    animateMove(serverLastMove.from, serverLastMove.to, () => {
+      if (serverBoard) board = JSON.parse(JSON.stringify(serverBoard));
+      if (serverCurrent) currentPlayer = serverCurrent;
+      if (serverHistory) moveHistory = [...serverHistory];
+      lastMove = serverLastMove;
+      selected = null;
+      validMoves = [];
+      gameStarted = true;
+      isMyTurn = (myColor === currentPlayer);
+      renderBoard();
+      renderMoveHistory();
+      highlightLastMove();
+      updateStatus();
+      checkGameOver();
+    });
+  } else {
+    if (serverBoard) board = JSON.parse(JSON.stringify(serverBoard));
+    if (serverCurrent) currentPlayer = serverCurrent;
+    if (serverHistory) moveHistory = [...serverHistory];
+    if (serverLastMove) lastMove = serverLastMove;
+    else lastMove = null;
+    if (color) {
+      myColor = color;
+      sessionStorage.setItem('myAssignedColor', myColor);
+    }
+    if (role) {
+      myRole = role;
+      sessionStorage.setItem('myRole', myRole);
+    }
+    selected = null;
+    validMoves = [];
+    gameStarted = true;
+    isMyTurn = (myColor === currentPlayer);
+    renderBoard();
+    renderMoveHistory();
+    highlightLastMove();
+    updateStatus();
+    checkGameOver();
   }
-  if (role) {
-    myRole = role;
-    sessionStorage.setItem('myRole', myRole);
-  }
-  selected = null;
-  validMoves = [];
-  gameStarted = true;
-  isMyTurn = (myColor === currentPlayer);
-  renderBoard();
-  renderMoveHistory();
-  highlightLastMove();
-  updateStatus();
-  checkGameOver();
 });
 
 // Listen for opponent leaving

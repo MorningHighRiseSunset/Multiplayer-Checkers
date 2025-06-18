@@ -211,6 +211,7 @@ io.on('connection', (socket) => {
     }
   });
 
+  // --- Updated move handler to include lastMove for animation ---
   socket.on('move', ({ room, from, to, move }) => {
     if (!rooms[room] || !rooms[room].inGame) return;
     const board = rooms[room].board;
@@ -239,11 +240,14 @@ io.on('connection', (socket) => {
     rooms[room].moveHistory.push(
       `${capitalize(rooms[room].currentPlayer)}: (${from.row},${from.col}) → (${to.row},${to.col})${move.jump ? ' (jump)' : ''}${becameKing ? ' (king)' : ''}`
     );
+    // Send lastMove for animation
+    const lastMove = { from, to };
     rooms[room].currentPlayer = rooms[room].currentPlayer === 'red' ? 'black' : 'red';
     io.to(room).emit('syncBoard', {
       board: rooms[room].board,
       currentPlayer: rooms[room].currentPlayer,
-      moveHistory: rooms[room].moveHistory
+      moveHistory: rooms[room].moveHistory,
+      lastMove // <-- send lastMove for animation
     });
     console.log('[server.js] move:', from, 'to', to, 'by', piece.color, 'in', room);
   });
