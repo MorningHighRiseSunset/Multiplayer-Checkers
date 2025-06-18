@@ -202,7 +202,9 @@ io.on('connection', (socket) => {
         io.to(socket.id).emit('syncBoard', {
           board: rooms[room].board,
           currentPlayer: rooms[room].currentPlayer,
-          moveHistory: rooms[room].moveHistory
+          moveHistory: rooms[room].moveHistory,
+          color: rooms[room].colors[socket.id],
+          role: rooms[room].roles[socket.id]
         });
       }
       maybeStartGame(room);

@@ -94,13 +94,21 @@ socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveH
 });
 
 // Sync board state from server
-socket.on('syncBoard', ({ board: serverBoard, currentPlayer: serverCurrent, moveHistory: serverHistory, lastMove: serverLastMove }) => {
+socket.on('syncBoard', ({ board: serverBoard, currentPlayer: serverCurrent, moveHistory: serverHistory, lastMove: serverLastMove, color, role }) => {
   console.log('[game.js] syncBoard event received');
   if (serverBoard) board = JSON.parse(JSON.stringify(serverBoard));
   if (serverCurrent) currentPlayer = serverCurrent;
   if (serverHistory) moveHistory = [...serverHistory];
   if (serverLastMove) lastMove = serverLastMove;
   else lastMove = null;
+  if (color) {
+    myColor = color;
+    sessionStorage.setItem('myAssignedColor', myColor);
+  }
+  if (role) {
+    myRole = role;
+    sessionStorage.setItem('myRole', myRole);
+  }
   selected = null;
   validMoves = [];
   gameStarted = true;
