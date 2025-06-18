@@ -210,6 +210,8 @@ function animateMove(from, to, callback) {
   animPiece.style.height = fromRect.height + 'px';
   animPiece.style.pointerEvents = 'none';
   animPiece.style.zIndex = 1000;
+  // Add smooth transition
+  animPiece.style.transition = 'transform 1.2s cubic-bezier(0.22, 0.61, 0.36, 1)';
   document.body.appendChild(animPiece);
 
   // Hide original piece during animation
@@ -224,7 +226,7 @@ function animateMove(from, to, callback) {
     document.body.removeChild(animPiece);
     piece.style.visibility = '';
     callback && callback();
-  }, 700);
+  }, 1200); // Increased duration for smoother animation
 }
 
 // --- Highlight last moved checker ---
