@@ -277,20 +277,19 @@ function renderBoard() {
   }
 }
 
-// --- Auto double-jump logic with animation ---
+// --- Auto double-jump logic with animation and server sync ---
 function performMoveWithAnimation(from, to, move, callback) {
   animateMove(from, to, () => {
-    // Actually update the board after animation
     doMove(from, to, move);
     renderBoard();
     highlightLastMove();
     setTimeout(() => {
-      // Check for further jumps (double-jump)
       const piece = board[to.row][to.col];
       if (move && move.jump && piece) {
+        // Send this jump to server
+        sendMoveToServer(from, to, move);
         const jumps = getValidMoves(to.row, to.col, true);
         if (jumps.length > 0) {
-          // Auto-perform the first available jump (can be improved for multiple options)
           const nextJump = jumps[0];
           lastMove = { from: { ...to }, to: { row: nextJump.row, col: nextJump.col } };
           performMoveWithAnimation(
@@ -301,9 +300,12 @@ function performMoveWithAnimation(from, to, move, callback) {
           );
           return;
         }
+      } else {
+        // If not a jump, send the move to server (for normal moves)
+        sendMoveToServer(from, to, move);
       }
       callback && callback();
-    }, 100); // Small delay before next jump
+    }, 100);
   });
 }
 
@@ -374,8 +376,6 @@ function onSquareClick(e) {
     isMyTurn = false;
     lastMove = { from: { ...selected }, to: { row, col } };
     performMoveWithAnimation(selected, { row, col }, move, () => {
-      // After all jumps, send the final move to server
-      sendMoveToServer(selected, { row, col }, move);
       renderBoard();
       highlightLastMove();
       updateStatus();
