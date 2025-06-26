@@ -15,8 +15,104 @@ console.log('[game.js] myRole from sessionStorage:', myRole);
 const boardSize = 8;
 const boardDiv = document.getElementById('game-board');
 const statusDiv = document.getElementById('game-status');
-const moveHistoryList = document.getElementById('move-history');
 const printBtn = document.getElementById('print-btn');
+
+// --- Move history panel ---
+// Remove old moveHistoryList if present
+let oldMoveHistoryList = document.getElementById('move-history');
+if (oldMoveHistoryList && oldMoveHistoryList.tagName === 'UL') {
+  oldMoveHistoryList.parentNode.removeChild(oldMoveHistoryList);
+}
+
+// Create styled move history panel if not present
+let moveHistoryElem = document.getElementById('move-history');
+if (!moveHistoryElem || moveHistoryElem.tagName === 'UL') {
+  // Remove old UL if present
+  if (moveHistoryElem && moveHistoryElem.tagName === 'UL') {
+    moveHistoryElem.parentNode.removeChild(moveHistoryElem);
+  }
+  moveHistoryElem = document.createElement('div');
+  moveHistoryElem.id = 'move-history';
+  moveHistoryElem.style.width = '180px';
+  moveHistoryElem.style.background = '#232323';
+  moveHistoryElem.style.border = '1.5px solid #ffe082';
+  moveHistoryElem.style.borderRadius = '10px';
+  moveHistoryElem.style.boxShadow = '0 4px 16px #0007';
+  moveHistoryElem.style.padding = '10px';
+  moveHistoryElem.style.margin = '18px 0';
+  moveHistoryElem.style.fontSize = '1em';
+  moveHistoryElem.style.color = '#ffe082';
+  moveHistoryElem.style.maxHeight = '384px';
+  moveHistoryElem.style.overflowY = 'auto';
+  moveHistoryElem.innerHTML = '<b>Move History</b><div id="move-history-list"></div>';
+  // Insert after boardDiv
+  if (boardDiv && boardDiv.parentNode) {
+    boardDiv.parentNode.insertBefore(moveHistoryElem, boardDiv.nextSibling);
+  }
+}
+
+// --- Move history panel logic ---
+function renderMoveHistory() {
+  const list = moveHistoryElem.querySelector('#move-history-list');
+  list.innerHTML = '';
+  let moves = moveHistory || [];
+  for (let i = 0; i < moves.length; i += 2) {
+    const row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.justifyContent = 'space-between';
+    row.style.alignItems = 'center';
+    row.style.marginBottom = '2px';
+
+    let moveNum = document.createElement('span');
+    moveNum.textContent = (i / 2 + 1) + '.';
+    moveNum.style.marginRight = '6px';
+    moveNum.style.color = '#ffe082';
+
+    // Convert move objects to notation
+    let whiteMove = document.createElement('a');
+    whiteMove.textContent = moves[i] ? moveToNotation(moves[i]) : '';
+    whiteMove.style.cursor = 'pointer';
+    whiteMove.style.color = '#fff';
+    whiteMove.onclick = () => jumpToMove(i);
+
+    let blackMove = document.createElement('a');
+    blackMove.textContent = moves[i + 1] ? moveToNotation(moves[i + 1]) : '';
+    blackMove.style.cursor = 'pointer';
+    blackMove.style.color = '#fff';
+    blackMove.onclick = () => jumpToMove(i + 1);
+
+    row.appendChild(moveNum);
+    row.appendChild(whiteMove);
+    row.appendChild(document.createTextNode(' '));
+    row.appendChild(blackMove);
+    list.appendChild(row);
+  }
+}
+
+// Helper to convert move object to notation
+function moveToNotation(move) {
+  if (!move) return '';
+  // If move is already a string, return as is
+  if (typeof move === 'string') return move;
+  // If move is object: {from: {row, col}, to: {row, col}, ...}
+  let from = move.from ? algebraic(move.from.row, move.from.col) : '';
+  let to = move.to ? algebraic(move.to.row, move.to.col) : '';
+  let promo = move.promotion ? '=' + move.promotion : '';
+  return from + '-' + to + promo;
+}
+
+// Algebraic notation for checkers (A1-H8, bottom left is A1)
+function algebraic(row, col) {
+  // Red always at bottom, so row 7 is 1, row 0 is 8
+  const file = String.fromCharCode('A'.charCodeAt(0) + col);
+  const rank = (8 - row);
+  return file + rank;
+}
+
+function jumpToMove(idx) {
+  // Not implemented: would require server to send FENs or board states for each move.
+  alert('Jump to move not implemented in this version.');
+}
 
 // --- Add Leave Game button ---
 let leaveBtn = document.getElementById('leave-btn');
@@ -434,15 +530,6 @@ function sendMoveToServer(from, to, move) {
   updateStatus();
 }
 
-function renderMoveHistory() {
-  moveHistoryList.innerHTML = '';
-  moveHistory.forEach(m => {
-    const li = document.createElement('li');
-    li.textContent = m;
-    moveHistoryList.appendChild(li);
-  });
-}
-
 function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
@@ -556,6 +643,9 @@ window.addEventListener('beforeunload', () => {
 });
 
 // --- Chat box logic ---
+const chatForm = document.getElementById('chat-form');
+const chatInput = document.getElementById('chat-input');
+const chatMessages = document.getElementById('chat-messages');
 if (chatForm && chatInput && chatMessages) {
   chatForm.addEventListener('submit', (e) => {
     e.preventDefault();
