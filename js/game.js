@@ -710,9 +710,13 @@ const rtcConfig = {
 // Initialize video chat when game starts
 socket.on('startGame', (data) => {
   console.log('[game.js] Game started, initializing video chat');
+  console.log('[game.js] startGame data:', data);
   // Only initialize video chat if we have both players
   if (data.roles && Object.keys(data.roles).length === 2) {
+    console.log('[game.js] Both players present, initializing video chat');
     initializeVideoChat();
+  } else {
+    console.log('[game.js] Not enough players for video chat:', data.roles);
   }
 });
 
@@ -764,6 +768,13 @@ socket.on('ice-candidate', async ({ candidate, fromId }) => {
 });
 
 async function initializeVideoChat() {
+  console.log('[game.js] initializeVideoChat called');
+  console.log('[game.js] videoContainer:', videoContainer);
+  console.log('[game.js] localVideo:', localVideo);
+  console.log('[game.js] remoteVideo:', remoteVideo);
+  console.log('[game.js] videoStatus:', videoStatus);
+  console.log('[game.js] toggleVideoBtn:', toggleVideoBtn);
+  
   try {
     // Check if getUserMedia is supported
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -904,16 +915,22 @@ async function createAndSendOffer() {
 // Toggle video button functionality
 if (toggleVideoBtn) {
   toggleVideoBtn.addEventListener('click', () => {
-         if (!isVideoEnabled) {
-       // Enable video
-       isVideoEnabled = true;
-       toggleVideoBtn.textContent = 'Disable Video Chat';
-       
-       // Show video container if we have a local stream
-       if (localStream) {
-         videoContainer.style.display = 'block';
-         videoStatus.textContent = 'Video chat enabled - waiting for opponent...';
-       }
+    if (!isVideoEnabled) {
+      // Enable video
+      isVideoEnabled = true;
+      toggleVideoBtn.textContent = 'Disable Video Chat';
+      
+      // Show video container if we have a local stream
+      if (localStream) {
+        videoContainer.style.display = 'block';
+        videoStatus.textContent = 'Video chat enabled - waiting for opponent...';
+      } else {
+        // If no local stream, show external options
+        const externalOptions = document.getElementById('external-video-options');
+        if (externalOptions) {
+          externalOptions.style.display = 'block';
+        }
+      }
       
       if (localStream) {
         // Notify opponent that we're ready for video
@@ -924,11 +941,17 @@ if (toggleVideoBtn) {
           createPeerConnection();
         }
       }
-         } else {
-       // Disable video
-       isVideoEnabled = false;
-       toggleVideoBtn.textContent = 'Video Chat';
-       videoContainer.style.display = 'none';
+    } else {
+      // Disable video
+      isVideoEnabled = false;
+      toggleVideoBtn.textContent = 'Video Chat';
+      videoContainer.style.display = 'none';
+      
+      // Hide external options
+      const externalOptions = document.getElementById('external-video-options');
+      if (externalOptions) {
+        externalOptions.style.display = 'none';
+      }
       
       if (peerConnection) {
         peerConnection.close();
