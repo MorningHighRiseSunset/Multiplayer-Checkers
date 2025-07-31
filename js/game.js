@@ -53,7 +53,17 @@ if (!moveHistoryElem || moveHistoryElem.tagName === 'UL') {
 
 // --- Move history panel logic ---
 function renderMoveHistory() {
+  if (!moveHistoryElem) {
+    console.warn('[game.js] moveHistoryElem not found, skipping renderMoveHistory');
+    return;
+  }
+  
   const list = moveHistoryElem.querySelector('#move-history-list');
+  if (!list) {
+    console.warn('[game.js] move-history-list not found, skipping renderMoveHistory');
+    return;
+  }
+  
   list.innerHTML = '';
   let moves = moveHistory || [];
   for (let i = 0; i < moves.length; i += 2) {
@@ -868,11 +878,11 @@ async function createAndSendOffer() {
 // Toggle video button functionality
 if (toggleVideoBtn) {
   toggleVideoBtn.addEventListener('click', () => {
-    if (!isVideoEnabled) {
-      // Enable video
-      isVideoEnabled = true;
-      toggleVideoBtn.textContent = 'Disable Video';
-      videoContainer.style.display = 'block';
+         if (!isVideoEnabled) {
+       // Enable video
+       isVideoEnabled = true;
+       toggleVideoBtn.textContent = 'Disable Video Chat';
+       videoContainer.style.display = 'block';
       
       if (localStream) {
         // Notify opponent that we're ready for video
@@ -883,11 +893,11 @@ if (toggleVideoBtn) {
           createPeerConnection();
         }
       }
-    } else {
-      // Disable video
-      isVideoEnabled = false;
-      toggleVideoBtn.textContent = 'Enable Video';
-      videoContainer.style.display = 'none';
+         } else {
+       // Disable video
+       isVideoEnabled = false;
+       toggleVideoBtn.textContent = 'Video Chat';
+       videoContainer.style.display = 'none';
       
       if (peerConnection) {
         peerConnection.close();
