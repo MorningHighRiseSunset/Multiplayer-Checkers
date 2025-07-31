@@ -3,9 +3,28 @@ const http = require('http');
 const { Server } = require('socket.io');
 
 const app = express();
+
+// Add CORS middleware
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', 'https://multiplayer-checkers.netlify.app');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+  } else {
+    next();
+  }
+});
+
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*" }
+  cors: { 
+    origin: ["https://multiplayer-checkers.netlify.app", "http://localhost:3000", "http://localhost:5000", "http://127.0.0.1:5500"],
+    methods: ["GET", "POST"],
+    credentials: true
+  }
 });
 
 const rooms = {};
@@ -96,8 +115,17 @@ function maybeStartGame(room) {
 }
 
 io.on('connection', (socket) => {
+  console.log('[server.js] New connection:', socket.id, 'from origin:', socket.handshake.headers.origin);
   let currentRoom = null;
   let myRole = null;
+  
+  socket.on('error', (error) => {
+    console.error('[server.js] Socket error:', error);
+  });
+  
+  socket.on('disconnect', (reason) => {
+    console.log('[server.js] Socket disconnected:', socket.id, 'reason:', reason);
+  });
 
   socket.on('createRoom', (roomCode) => {
     if (!rooms[roomCode]) {
