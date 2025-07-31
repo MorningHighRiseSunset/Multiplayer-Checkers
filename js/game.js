@@ -687,20 +687,98 @@ if (!startBoard) {
 }
 
 // --- Video Chat Functionality ---
+let videoChat = null; // Main video chat state
 let localStream = null;
 let remoteStream = null;
 let mediaRecorder = null;
 let videoChunks = [];
-let isVideoEnabled = false;
+let isVideoEnabled = true;
+let isAudioEnabled = true;
 let videoInterval = null;
 
+// Video chat elements
+const videoChatToggleBtn = document.getElementById('video-chat-toggle-btn');
 const videoContainer = document.getElementById('video-container');
 const localVideo = document.getElementById('local-video');
 const remoteVideo = document.getElementById('remote-video');
+const localPlaceholder = document.getElementById('local-placeholder');
+const remotePlaceholder = document.getElementById('remote-placeholder');
 const videoStatus = document.getElementById('video-status');
 const toggleVideoBtn = document.getElementById('toggle-video-btn');
+const toggleAudioBtn = document.getElementById('toggle-audio-btn');
+const leaveVideoBtn = document.getElementById('leave-video-btn');
+const minimizeBtn = document.getElementById('minimize-btn');
 
-// Simple video chat using MediaRecorder and WebSocket
+// Initialize video chat button event listeners
+function initializeVideoChatButtons() {
+  // Main toggle button
+  videoChatToggleBtn.addEventListener('click', toggleVideoChat);
+  
+  // Control buttons
+  toggleVideoBtn.addEventListener('click', toggleVideo);
+  toggleAudioBtn.addEventListener('click', toggleAudio);
+  leaveVideoBtn.addEventListener('click', leaveVideoChat);
+  minimizeBtn.addEventListener('click', toggleMinimize);
+}
+
+// Main video chat toggle function
+async function toggleVideoChat() {
+  if (videoChat === null) {
+    // Start video chat
+    await startVideoChat();
+  } else {
+    // Stop video chat
+    stopVideoChat();
+  }
+}
+
+// Start video chat
+async function startVideoChat() {
+  console.log('[game.js] Starting video chat');
+  
+  try {
+    // Initialize media stream
+    await initializeVideoChat();
+    
+    // Update UI state
+    videoChat = true;
+    videoChatToggleBtn.classList.add('active');
+    videoChatToggleBtn.textContent = '🔴';
+    videoChatToggleBtn.title = 'Stop Video Chat';
+    videoContainer.style.display = 'block';
+    
+    // Show placeholders
+    showLocalPlaceholder();
+    showRemotePlaceholder();
+    
+    videoStatus.textContent = 'Video chat ready - waiting for opponent...';
+    
+  } catch (error) {
+    console.error('[game.js] Failed to start video chat:', error);
+    videoStatus.textContent = 'Failed to start video chat';
+    videoChat = null;
+  }
+}
+
+// Stop video chat
+function stopVideoChat() {
+  console.log('[game.js] Stopping video chat');
+  
+  // Cleanup media
+  cleanupVideoChat();
+  
+  // Update UI state
+  videoChat = null;
+  videoChatToggleBtn.classList.remove('active');
+  videoChatToggleBtn.textContent = '📹';
+  videoChatToggleBtn.title = 'Start Video Chat';
+  videoContainer.style.display = 'none';
+  
+  // Notify server
+  socket.emit('video-disabled', { room: roomCode });
+}
+
+// Initialize video chat media
 async function initializeVideoChat() {
   console.log('[game.js] initializeVideoChat called');
   
@@ -734,15 +812,14 @@ async function initializeVideoChat() {
       localVideo.play().catch(e => console.error('[game.js] Error playing local video:', e));
     };
     
-    // Show video container
-    videoContainer.style.display = 'block';
-    videoStatus.textContent = 'Video chat ready - click "Video Chat" button to start';
-    
     console.log('[game.js] Video chat initialized successfully');
     console.log('[game.js] Local stream tracks:', localStream.getTracks().map(t => t.kind));
     
     // Notify server that video is ready
     socket.emit('video-ready', { room: roomCode });
+    
+    // Start streaming
+    startVideoStream();
     
   } catch (error) {
     console.error('[game.js] Error accessing media devices:', error);
@@ -753,8 +830,7 @@ async function initializeVideoChat() {
     } else {
       videoStatus.textContent = 'Video chat not available';
     }
-    // Hide video container if we can't access media
-    videoContainer.style.display = 'none';
+    throw error;
   }
 }
 
@@ -795,6 +871,14 @@ function stopVideoStream() {
     mediaRecorder = null;
   }
   
+  console.log('[game.js] Video streaming stopped');
+}
+
+// Cleanup video chat
+function cleanupVideoChat() {
+  // Stop streaming
+  stopVideoStream();
+  
   // Stop all camera/microphone tracks
   if (localStream) {
     localStream.getTracks().forEach(track => {
@@ -804,12 +888,113 @@ function stopVideoStream() {
     localStream = null;
   }
   
-  // Clear local video
+  // Clear videos
   if (localVideo.srcObject) {
     localVideo.srcObject = null;
   }
+  if (remoteVideo.src) {
+    URL.revokeObjectURL(remoteVideo.src);
+    remoteVideo.src = '';
+  }
   
-  console.log('[game.js] Video streaming stopped and camera turned off');
+  // Show placeholders
+  showLocalPlaceholder();
+  showRemotePlaceholder();
+  
+  console.log('[game.js] Video chat cleaned up');
+}
+
+// Toggle video (camera on/off)
+function toggleVideo() {
+  if (!localStream) return;
+  
+  const videoTrack = localStream.getVideoTracks()[0];
+  if (videoTrack) {
+    isVideoEnabled = !isVideoEnabled;
+    videoTrack.enabled = isVideoEnabled;
+    
+    // Update button
+    toggleVideoBtn.textContent = isVideoEnabled ? '🔴' : '📹';
+    toggleVideoBtn.title = isVideoEnabled ? 'Turn off camera' : 'Turn on camera';
+    
+    if (isVideoEnabled) {
+      toggleVideoBtn.classList.remove('muted');
+      hideLocalPlaceholder();
+    } else {
+      toggleVideoBtn.classList.add('muted');
+      showLocalPlaceholder();
+    }
+    
+    console.log('[game.js] Video toggled:', isVideoEnabled);
+  }
+}
+
+// Toggle audio (microphone on/off)
+function toggleAudio() {
+  if (!localStream) return;
+  
+  const audioTrack = localStream.getAudioTracks()[0];
+  if (audioTrack) {
+    isAudioEnabled = !isAudioEnabled;
+    audioTrack.enabled = isAudioEnabled;
+    
+    // Update button
+    toggleAudioBtn.textContent = isAudioEnabled ? '🔊' : '🔇';
+    toggleAudioBtn.title = isAudioEnabled ? 'Mute microphone' : 'Unmute microphone';
+    
+    if (isAudioEnabled) {
+      toggleAudioBtn.classList.remove('muted');
+    } else {
+      toggleAudioBtn.classList.add('muted');
+    }
+    
+    console.log('[game.js] Audio toggled:', isAudioEnabled);
+  }
+}
+
+// Leave video chat
+function leaveVideoChat() {
+  console.log('[game.js] Leaving video chat');
+  stopVideoChat();
+}
+
+// Toggle minimize
+function toggleMinimize() {
+  const isMinimized = videoContainer.classList.contains('minimized');
+  
+  if (isMinimized) {
+    videoContainer.classList.remove('minimized');
+    minimizeBtn.textContent = '−';
+    minimizeBtn.title = 'Minimize';
+  } else {
+    videoContainer.classList.add('minimized');
+    minimizeBtn.textContent = '+';
+    minimizeBtn.title = 'Expand';
+  }
+}
+
+// Show local placeholder
+function showLocalPlaceholder() {
+  localPlaceholder.style.display = 'flex';
+  localVideo.style.display = 'none';
+}
+
+// Hide local placeholder
+function hideLocalPlaceholder() {
+  localPlaceholder.style.display = 'none';
+  localVideo.style.display = 'block';
+}
+
+// Show remote placeholder
+function showRemotePlaceholder() {
+  remotePlaceholder.style.display = 'flex';
+  remoteVideo.style.display = 'none';
+}
+
+// Hide remote placeholder
+function hideRemotePlaceholder() {
+  remotePlaceholder.style.display = 'none';
+  remoteVideo.style.display = 'block';
 }
 
 // Handle incoming video data
@@ -825,6 +1010,7 @@ socket.on('video-data', ({ data, fromId }) => {
     remoteVideo.src = videoUrl;
     remoteVideo.onloadedmetadata = () => {
       remoteVideo.play().catch(e => console.error('[game.js] Error playing remote video:', e));
+      hideRemotePlaceholder();
     };
     
     // Clean up old URL
@@ -842,76 +1028,36 @@ socket.on('video-data', ({ data, fromId }) => {
 // Handle opponent turning off their camera
 socket.on('video-disabled', ({ playerId }) => {
   console.log('[game.js] Opponent disabled video:', playerId);
-  videoStatus.textContent = 'Opponent turned off their camera';
+  videoStatus.textContent = 'Opponent left video chat';
   
-  // Clear remote video
+  // Clear remote video and show placeholder
   if (remoteVideo.src) {
     URL.revokeObjectURL(remoteVideo.src);
     remoteVideo.src = '';
   }
+  showRemotePlaceholder();
 });
 
 // Handle opponent video ready
 socket.on('opponent-video-ready', ({ playerId }) => {
   console.log('[game.js] Opponent video ready:', playerId);
-  if (isVideoEnabled && localStream) {
+  videoStatus.textContent = 'Opponent joined video chat';
+  
+  if (videoChat && localStream) {
     startVideoStream();
   }
 });
 
-// Initialize video chat when game starts
-socket.on('startGame', (data) => {
-  console.log('[game.js] Game started, initializing video chat');
-  console.log('[game.js] startGame data:', data);
-  // Only initialize video chat if we have both players
-  if (data.roles && Object.keys(data.roles).length === 2) {
-    console.log('[game.js] Both players present, initializing video chat');
-    initializeVideoChat();
-  } else {
-    console.log('[game.js] Not enough players for video chat:', data.roles);
-  }
+// Initialize video chat buttons when page loads
+document.addEventListener('DOMContentLoaded', () => {
+  initializeVideoChatButtons();
 });
 
-// Toggle video button functionality
-if (toggleVideoBtn) {
-  toggleVideoBtn.addEventListener('click', () => {
-    if (!isVideoEnabled) {
-      // Enable video
-      isVideoEnabled = true;
-      toggleVideoBtn.textContent = 'Disable Video Chat';
-      
-      // Show video container if we have a local stream
-      if (localStream) {
-        videoContainer.style.display = 'block';
-        videoStatus.textContent = 'Video chat enabled - waiting for opponent...';
-        startVideoStream();
-      } else {
-        // If no local stream, try to initialize
-        initializeVideoChat();
-      }
-      
-    } else {
-      // Disable video
-      isVideoEnabled = false;
-      toggleVideoBtn.textContent = 'Video Chat';
-      videoContainer.style.display = 'none';
-      
-      // Notify opponent that we turned off our camera
-      socket.emit('video-disabled', { room: roomCode });
-      
-      stopVideoStream();
-      
-      if (remoteVideo.src) {
-        remoteVideo.src = '';
-      }
-    }
-  });
-}
-
-// Clean up video resources when leaving
-window.addEventListener('beforeunload', () => {
-  if (localStream) {
-    localStream.getTracks().forEach(track => track.stop());
-  }
-  stopVideoStream();
+// Initialize video chat when game starts (optional auto-start)
+socket.on('startGame', (data) => {
+  console.log('[game.js] Game started, video chat ready');
+  console.log('[game.js] startGame data:', data);
+  
+  // Video chat is now available but not auto-started
+  // Users can click the floating button to start
 });
