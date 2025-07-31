@@ -794,7 +794,22 @@ function stopVideoStream() {
     mediaRecorder.stop();
     mediaRecorder = null;
   }
-  console.log('[game.js] Video streaming stopped');
+  
+  // Stop all camera/microphone tracks
+  if (localStream) {
+    localStream.getTracks().forEach(track => {
+      track.stop();
+      console.log('[game.js] Stopped track:', track.kind);
+    });
+    localStream = null;
+  }
+  
+  // Clear local video
+  if (localVideo.srcObject) {
+    localVideo.srcObject = null;
+  }
+  
+  console.log('[game.js] Video streaming stopped and camera turned off');
 }
 
 // Handle incoming video data
@@ -821,6 +836,18 @@ socket.on('video-data', ({ data, fromId }) => {
     
   } catch (error) {
     console.error('[game.js] Error handling video data:', error);
+  }
+});
+
+// Handle opponent turning off their camera
+socket.on('video-disabled', ({ playerId }) => {
+  console.log('[game.js] Opponent disabled video:', playerId);
+  videoStatus.textContent = 'Opponent turned off their camera';
+  
+  // Clear remote video
+  if (remoteVideo.src) {
+    URL.revokeObjectURL(remoteVideo.src);
+    remoteVideo.src = '';
   }
 });
 
@@ -868,6 +895,9 @@ if (toggleVideoBtn) {
       isVideoEnabled = false;
       toggleVideoBtn.textContent = 'Video Chat';
       videoContainer.style.display = 'none';
+      
+      // Notify opponent that we turned off our camera
+      socket.emit('video-disabled', { room: roomCode });
       
       stopVideoStream();
       

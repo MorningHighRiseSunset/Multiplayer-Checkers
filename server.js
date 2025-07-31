@@ -345,6 +345,11 @@ io.on('connection', (socket) => {
     console.log('[server.js] video-ready from', socket.id, 'in room', room);
   });
 
+  socket.on('video-disabled', ({ room }) => {
+    socket.to(room).emit('video-disabled', { playerId: socket.id });
+    console.log('[server.js] video-disabled from', socket.id, 'in room', room);
+  });
+
   socket.on('disconnect', () => {
     if (currentRoom && rooms[currentRoom]) {
       const leftRole = rooms[currentRoom].roles[socket.id];
