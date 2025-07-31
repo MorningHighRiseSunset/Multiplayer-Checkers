@@ -337,7 +337,7 @@ h1 {
   height: 90px;
   border: 2px solid #ffd700;
   border-radius: 8px;
-  background: #000;
+  background: #333; /* Changed from #000 to #333 to see if element is visible */
   object-fit: cover;
 }
 

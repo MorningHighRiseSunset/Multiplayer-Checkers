@@ -784,14 +784,40 @@ async function initializeVideoChat() {
       }
     });
     
-    // Display local video
-    localVideo.srcObject = localStream;
-    
-    // Show video container
-    videoContainer.style.display = 'block';
-    videoStatus.textContent = 'Video chat ready - click "Toggle Video" to start';
-    
-    console.log('[game.js] Video chat initialized successfully');
+         // Display local video
+     localVideo.srcObject = localStream;
+     console.log('[game.js] Set localVideo.srcObject to stream');
+     
+     // Ensure video plays
+     localVideo.onloadedmetadata = () => {
+       console.log('[game.js] Local video metadata loaded');
+       localVideo.play().catch(e => console.error('[game.js] Error playing local video:', e));
+     };
+     
+     // Add error handling for video
+     localVideo.onerror = (e) => {
+       console.error('[game.js] Local video error:', e);
+     };
+     
+     // Check if video is actually playing
+     localVideo.onplay = () => {
+       console.log('[game.js] Local video started playing');
+     };
+     
+     // Force play after a short delay
+     setTimeout(() => {
+       if (localVideo.paused) {
+         console.log('[game.js] Video is paused, trying to play again');
+         localVideo.play().catch(e => console.error('[game.js] Error playing local video (retry):', e));
+       }
+     }, 1000);
+     
+     // Show video container
+     videoContainer.style.display = 'block';
+     videoStatus.textContent = 'Video chat ready - click "Video Chat" button to start';
+     
+     console.log('[game.js] Video chat initialized successfully');
+     console.log('[game.js] Local stream tracks:', localStream.getTracks().map(t => t.kind));
   } catch (error) {
     console.error('[game.js] Error accessing media devices:', error);
     if (error.name === 'NotAllowedError') {
@@ -882,7 +908,12 @@ if (toggleVideoBtn) {
        // Enable video
        isVideoEnabled = true;
        toggleVideoBtn.textContent = 'Disable Video Chat';
-       videoContainer.style.display = 'block';
+       
+       // Show video container if we have a local stream
+       if (localStream) {
+         videoContainer.style.display = 'block';
+         videoStatus.textContent = 'Video chat enabled - waiting for opponent...';
+       }
       
       if (localStream) {
         // Notify opponent that we're ready for video
