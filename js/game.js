@@ -643,9 +643,6 @@ window.addEventListener('beforeunload', () => {
 });
 
 // --- Chat box logic ---
-const chatForm = document.getElementById('chat-form');
-const chatInput = document.getElementById('chat-input');
-const chatMessages = document.getElementById('chat-messages');
 if (chatForm && chatInput && chatMessages) {
   chatForm.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -678,3 +675,238 @@ if (!startBoard) {
   console.log('[game.js] No startBoard in sessionStorage, calling initBoard');
   initBoard();
 }
+
+// --- Video Chat Functionality ---
+let localStream = null;
+let remoteStream = null;
+let peerConnection = null;
+let opponentSocketId = null;
+let isVideoEnabled = false;
+
+const videoContainer = document.getElementById('video-container');
+const localVideo = document.getElementById('local-video');
+const remoteVideo = document.getElementById('remote-video');
+const videoStatus = document.getElementById('video-status');
+const toggleVideoBtn = document.getElementById('toggle-video-btn');
+
+// WebRTC configuration
+const rtcConfig = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ]
+};
+
+// Initialize video chat when game starts
+socket.on('startGame', (data) => {
+  console.log('[game.js] Game started, initializing video chat');
+  // Only initialize video chat if we have both players
+  if (data.roles && Object.keys(data.roles).length === 2) {
+    initializeVideoChat();
+  }
+});
+
+// Handle opponent video ready
+socket.on('opponent-video-ready', ({ playerId }) => {
+  console.log('[game.js] Opponent video ready:', playerId);
+  opponentSocketId = playerId;
+  if (isVideoEnabled && localStream) {
+    createPeerConnection();
+  }
+});
+
+// WebRTC signaling handlers
+socket.on('offer', async ({ offer, fromId }) => {
+  console.log('[game.js] Received offer from:', fromId);
+  if (!peerConnection) {
+    createPeerConnection();
+  }
+  try {
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+    socket.emit('answer', { room: roomCode, answer, targetId: fromId });
+  } catch (error) {
+    console.error('[game.js] Error handling offer:', error);
+    videoStatus.textContent = 'Video connection failed';
+  }
+});
+
+socket.on('answer', async ({ answer, fromId }) => {
+  console.log('[game.js] Received answer from:', fromId);
+  try {
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+  } catch (error) {
+    console.error('[game.js] Error handling answer:', error);
+    videoStatus.textContent = 'Video connection failed';
+  }
+});
+
+socket.on('ice-candidate', async ({ candidate, fromId }) => {
+  console.log('[game.js] Received ICE candidate from:', fromId);
+  if (peerConnection && peerConnection.remoteDescription) {
+    try {
+      await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (error) {
+      console.error('[game.js] Error adding ICE candidate:', error);
+    }
+  }
+});
+
+async function initializeVideoChat() {
+  try {
+    // Check if getUserMedia is supported
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('getUserMedia not supported');
+    }
+
+    // Request camera and microphone access
+    localStream = await navigator.mediaDevices.getUserMedia({
+      video: { 
+        width: { ideal: 120, max: 240 },
+        height: { ideal: 90, max: 180 },
+        facingMode: 'user'
+      },
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    });
+    
+    // Display local video
+    localVideo.srcObject = localStream;
+    
+    // Show video container
+    videoContainer.style.display = 'block';
+    videoStatus.textContent = 'Video chat ready - click "Toggle Video" to start';
+    
+    console.log('[game.js] Video chat initialized successfully');
+  } catch (error) {
+    console.error('[game.js] Error accessing media devices:', error);
+    if (error.name === 'NotAllowedError') {
+      videoStatus.textContent = 'Camera/microphone access denied - check permissions';
+    } else if (error.name === 'NotFoundError') {
+      videoStatus.textContent = 'No camera/microphone found';
+    } else {
+      videoStatus.textContent = 'Video chat not available';
+    }
+    // Hide video container if we can't access media
+    videoContainer.style.display = 'none';
+  }
+}
+
+function createPeerConnection() {
+  if (peerConnection) {
+    peerConnection.close();
+  }
+  
+  peerConnection = new RTCPeerConnection(rtcConfig);
+  
+  // Add local stream
+  if (localStream) {
+    localStream.getTracks().forEach(track => {
+      peerConnection.addTrack(track, localStream);
+    });
+  }
+  
+  // Handle remote stream
+  peerConnection.ontrack = (event) => {
+    console.log('[game.js] Received remote stream');
+    remoteStream = event.streams[0];
+    remoteVideo.srcObject = remoteStream;
+    videoStatus.textContent = 'Video chat connected!';
+  };
+  
+  // Handle ICE candidates
+  peerConnection.onicecandidate = (event) => {
+    if (event.candidate && opponentSocketId) {
+      socket.emit('ice-candidate', {
+        room: roomCode,
+        candidate: event.candidate,
+        targetId: opponentSocketId
+      });
+    }
+  };
+  
+  // Handle connection state changes
+  peerConnection.onconnectionstatechange = () => {
+    console.log('[game.js] Connection state:', peerConnection.connectionState);
+    switch (peerConnection.connectionState) {
+      case 'connected':
+        videoStatus.textContent = 'Video chat connected!';
+        break;
+      case 'disconnected':
+        videoStatus.textContent = 'Video chat disconnected';
+        break;
+      case 'failed':
+        videoStatus.textContent = 'Video chat connection failed';
+        break;
+    }
+  };
+  
+  // Create and send offer if we have an opponent
+  if (opponentSocketId) {
+    createAndSendOffer();
+  }
+}
+
+async function createAndSendOffer() {
+  try {
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    socket.emit('offer', {
+      room: roomCode,
+      offer,
+      targetId: opponentSocketId
+    });
+  } catch (error) {
+    console.error('[game.js] Error creating offer:', error);
+  }
+}
+
+// Toggle video button functionality
+if (toggleVideoBtn) {
+  toggleVideoBtn.addEventListener('click', () => {
+    if (!isVideoEnabled) {
+      // Enable video
+      isVideoEnabled = true;
+      toggleVideoBtn.textContent = 'Disable Video';
+      videoContainer.style.display = 'block';
+      
+      if (localStream) {
+        // Notify opponent that we're ready for video
+        socket.emit('video-ready', { room: roomCode });
+        
+        // If we already have opponent info, create connection
+        if (opponentSocketId) {
+          createPeerConnection();
+        }
+      }
+    } else {
+      // Disable video
+      isVideoEnabled = false;
+      toggleVideoBtn.textContent = 'Enable Video';
+      videoContainer.style.display = 'none';
+      
+      if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+      }
+      
+      if (remoteVideo.srcObject) {
+        remoteVideo.srcObject = null;
+      }
+    }
+  });
+}
+
+// Clean up video resources when leaving
+window.addEventListener('beforeunload', () => {
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+  }
+  if (peerConnection) {
+    peerConnection.close();
+  }
+});

@@ -10,9 +10,26 @@
   <h1>PvP Checkers</h1>
   <div id="controls" style="margin-bottom: 18px;">
     <button id="print-btn">Print Moves</button>
+    <button id="toggle-video-btn" style="margin-left: 10px;">Toggle Video</button>
     <!-- Leave Game button will be added by JS if not present -->
   </div>
   <div id="game-status" style="margin-bottom: 18px; font-size: 1.2em; color: #ffd700;"></div>
+  
+  <!-- Video Chat Container -->
+  <div id="video-container" style="display: none; margin: 0 auto 24px auto; max-width: 400px; text-align: center;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+      <div style="flex: 1; margin-right: 10px;">
+        <video id="local-video" autoplay muted playsinline style="width: 100%; max-width: 120px; height: 90px; border: 2px solid #ffd700; border-radius: 8px; background: #000;"></video>
+        <div style="font-size: 0.8em; color: #ffd700; margin-top: 4px;">You</div>
+      </div>
+      <div style="flex: 1; margin-left: 10px;">
+        <video id="remote-video" autoplay playsinline style="width: 100%; max-width: 120px; height: 90px; border: 2px solid #ffd700; border-radius: 8px; background: #000;"></video>
+        <div style="font-size: 0.8em; color: #ffd700; margin-top: 4px;">Opponent</div>
+      </div>
+    </div>
+    <div id="video-status" style="font-size: 0.9em; color: #ffd700; margin-bottom: 10px;">Video chat connecting...</div>
+  </div>
+  
   <div id="game-board" style="margin: 0 auto 24px auto; max-width: 400px;"></div>
   <div id="move-history-container" style="max-width: 400px; margin: 0 auto 24px auto;">
     <h3 style="color:#ffd700;">Move History</h3>

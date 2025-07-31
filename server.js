@@ -306,6 +306,27 @@ io.on('connection', (socket) => {
     console.log('[server.js] chatMessage:', sender, msg, 'in', room);
   });
 
+  // WebRTC signaling for video chat
+  socket.on('offer', ({ room, offer, targetId }) => {
+    socket.to(targetId).emit('offer', { offer, fromId: socket.id });
+    console.log('[server.js] offer relayed from', socket.id, 'to', targetId, 'in room', room);
+  });
+
+  socket.on('answer', ({ room, answer, targetId }) => {
+    socket.to(targetId).emit('answer', { answer, fromId: socket.id });
+    console.log('[server.js] answer relayed from', socket.id, 'to', targetId, 'in room', room);
+  });
+
+  socket.on('ice-candidate', ({ room, candidate, targetId }) => {
+    socket.to(targetId).emit('ice-candidate', { candidate, fromId: socket.id });
+    console.log('[server.js] ice-candidate relayed from', socket.id, 'to', targetId, 'in room', room);
+  });
+
+  socket.on('video-ready', ({ room }) => {
+    socket.to(room).emit('opponent-video-ready', { playerId: socket.id });
+    console.log('[server.js] video-ready from', socket.id, 'in room', room);
+  });
+
   socket.on('disconnect', () => {
     if (currentRoom && rooms[currentRoom]) {
       const leftRole = rooms[currentRoom].roles[socket.id];
