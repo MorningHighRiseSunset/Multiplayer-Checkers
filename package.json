@@ -1,7 +1,7 @@
 {
   "name": "checkers-primary",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
@@ -13,5 +13,8 @@
     "express": "^5.1.0",
     "socket.io": "^4.8.1"
   },
-  "description": ""
+  "description": "",
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }

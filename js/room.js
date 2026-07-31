@@ -1,4 +1,6 @@
-const socket = io('https://multiplayer-checkers.onrender.com');
+const socket = io({
+  transports: ['websocket', 'polling']
+});
 
 const params = new URLSearchParams(window.location.search);
 const roomCode = params.get('room');

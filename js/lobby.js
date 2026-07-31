@@ -1,4 +1,6 @@
-const socket = io('https://multiplayer-checkers.onrender.com');
+const socket = io({
+  transports: ['websocket', 'polling']
+});
 
 const createBtn = document.getElementById('create-btn');
 const joinBtn = document.getElementById('join-btn');

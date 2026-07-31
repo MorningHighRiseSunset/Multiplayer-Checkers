@@ -1,12 +1,14 @@
 const express = require('express');
-const http = require('http');
+const { createServer } = require('http');
 const { Server } = require('socket.io');
+const path = require('path');
 
 const app = express();
+const server = createServer(app);
 
 // Add CORS middleware
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'https://multiplayer-checkers.netlify.app');
+  res.header('Access-Control-Allow-Origin', 'https://multiplayer-checkers-five.vercel.app');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.header('Access-Control-Allow-Credentials', 'true');
@@ -18,10 +20,9 @@ app.use((req, res, next) => {
   }
 });
 
-const server = http.createServer(app);
 const io = new Server(server, {
   cors: { 
-    origin: ["https://multiplayer-checkers.netlify.app", "http://localhost:3000", "http://localhost:5000", "http://127.0.0.1:5500"],
+    origin: ["https://multiplayer-checkers-five.vercel.app", "http://localhost:3000", "http://localhost:5000", "http://127.0.0.1:5500"],
     methods: ["GET", "POST"],
     credentials: true
   }
@@ -30,12 +31,25 @@ const io = new Server(server, {
 const rooms = {};
 const roomTimeouts = {}; // Grace period for room deletion
 
+// Serve static files
+app.use(express.static(path.join(__dirname, '.')));
+
+// Serve index.html for root route
 app.get("/", (req, res) => {
-  res.send("Checkers multiplayer server is running!");
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-app.use((req, res) => {
-  res.status(404).send('Not found');
+// Handle specific routes
+app.get("/lobby.html", (req, res) => {
+  res.sendFile(path.join(__dirname, 'lobby.html'));
+});
+
+app.get("/game.html", (req, res) => {
+  res.sendFile(path.join(__dirname, 'game.html'));
+});
+
+app.get("/room.html", (req, res) => {
+  res.sendFile(path.join(__dirname, 'room.html'));
 });
 
 process.on('uncaughtException', err => {
@@ -381,6 +395,13 @@ function capitalize(str) {
 }
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Socket.IO server running on port ${PORT}`);
-});
+
+// For Vercel deployment
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`Socket.IO server running on port ${PORT}`);
+  });
+}
+
+// Export for Vercel
+module.exports = app;
