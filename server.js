@@ -31,25 +31,25 @@ const io = new Server(server, {
 const rooms = {};
 const roomTimeouts = {}; // Grace period for room deletion
 
-// Serve static files
-app.use(express.static(path.join(__dirname, '.')));
+// Serve static files from public directory
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Serve index.html for root route
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // Handle specific routes
 app.get("/lobby.html", (req, res) => {
-  res.sendFile(path.join(__dirname, 'lobby.html'));
+  res.sendFile(path.join(__dirname, 'public', 'lobby.html'));
 });
 
 app.get("/game.html", (req, res) => {
-  res.sendFile(path.join(__dirname, 'game.html'));
+  res.sendFile(path.join(__dirname, 'public', 'game.html'));
 });
 
 app.get("/room.html", (req, res) => {
-  res.sendFile(path.join(__dirname, 'room.html'));
+  res.sendFile(path.join(__dirname, 'public', 'room.html'));
 });
 
 process.on('uncaughtException', err => {
