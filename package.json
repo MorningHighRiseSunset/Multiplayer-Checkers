@@ -4,7 +4,9 @@
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node server.js",
+    "build": "node build-analytics.js",
+    "postinstall": "npm run build"
   },
   "keywords": [],
   "author": "",
@@ -12,6 +14,10 @@
   "dependencies": {
     "express": "^5.1.0",
     "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "@vercel/analytics": "^2.0.1",
+    "esbuild": "^0.28.2"
   },
   "description": "",
   "engines": {
