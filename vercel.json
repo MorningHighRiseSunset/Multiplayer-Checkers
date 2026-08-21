@@ -1,4 +1,5 @@
 {
+  "name": "multiplayer-checkers",
   "rewrites": [
     {
       "source": "/socket.io/(.*)",
