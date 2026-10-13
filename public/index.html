@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <title>Checkers - Play</title>
-  <link rel="stylesheet" href="css/play.css">
   <!-- Vercel Web Analytics -->
   <script defer src="https://cdn.vercel-insights.com/v1/script.js"></script>
   <!-- Google tag (gtag.js) -->
@@ -17,10 +16,18 @@
   </script>
 </head>
 <body>
-  <div id="container">
-    <div id="mini-board"></div>
-    <button id="play-btn">Start Game</button>
-  </div>
-  <script src="js/play.js"></script>
+  <script>
+    // Generate a random room code and redirect to game page
+    function generateRoomCode() {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let code = '';
+      for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return code;
+    }
+    const roomCode = generateRoomCode();
+    window.location.href = `game.html?room=${roomCode}`;
+  </script>
 </body>
 </html>

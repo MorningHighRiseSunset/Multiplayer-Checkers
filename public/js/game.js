@@ -10,9 +10,77 @@ let myColor = sessionStorage.getItem('myAssignedColor');
 let myRole = sessionStorage.getItem('myRole');
 let mySocketId = null;
 
+// AI mode flag
+let isAIMode = false;
+let aiColor = null;
+
 console.log('[game.js] Loaded. roomCode:', roomCode);
 console.log('[game.js] myColor from sessionStorage:', myColor);
 console.log('[game.js] myRole from sessionStorage:', myRole);
+
+// --- Join URL and AI button logic ---
+const joinUrlDiv = document.getElementById('join-url');
+const copyUrlBtn = document.getElementById('copy-url-btn');
+const playAiBtn = document.getElementById('play-ai-btn');
+
+// Display the join URL
+if (joinUrlDiv) {
+  const joinUrl = window.location.href;
+  joinUrlDiv.textContent = joinUrl;
+}
+
+// Copy URL button
+if (copyUrlBtn) {
+  copyUrlBtn.onclick = () => {
+    const joinUrl = window.location.href;
+    navigator.clipboard.writeText(joinUrl).then(() => {
+      copyUrlBtn.textContent = 'Copied!';
+      setTimeout(() => {
+        copyUrlBtn.textContent = 'Copy URL';
+      }, 2000);
+    }).catch(err => {
+      console.error('Failed to copy URL:', err);
+      alert('Failed to copy URL');
+    });
+  };
+}
+
+// Play AI button
+if (playAiBtn) {
+  playAiBtn.onclick = () => {
+    startAIMode();
+  };
+}
+
+// Start AI mode
+function startAIMode() {
+  console.log('[game.js] Starting AI mode');
+  isAIMode = true;
+  myColor = 'red'; // Player is always red (bottom)
+  aiColor = 'black'; // AI is always black (top)
+  myRole = 'Player';
+  currentPlayer = 'black'; // AI goes first (black)
+  isMyTurn = false;
+  gameStarted = true;
+  gameEnded = false;
+
+  // Initialize board
+  initBoard();
+
+  // Hide join URL section and Play AI button
+  if (joinUrlDiv) joinUrlDiv.style.display = 'none';
+  if (copyUrlBtn) copyUrlBtn.style.display = 'none';
+  if (playAiBtn) playAiBtn.style.display = 'none';
+
+  updateStatus();
+
+  // AI makes first move after a short delay
+  setTimeout(() => {
+    if (currentPlayer === aiColor) {
+      makeAIMove();
+    }
+  }, 1000);
+}
 
 const boardSize = 8;
 const boardDiv = document.getElementById('game-board');
@@ -35,15 +103,15 @@ if (!moveHistoryElem || moveHistoryElem.tagName === 'UL') {
   }
   moveHistoryElem = document.createElement('div');
   moveHistoryElem.id = 'move-history';
-  moveHistoryElem.style.width = '180px';
-  moveHistoryElem.style.background = '#232323';
-  moveHistoryElem.style.border = '1.5px solid #ffe082';
-  moveHistoryElem.style.borderRadius = '10px';
-  moveHistoryElem.style.boxShadow = '0 4px 16px #0007';
-  moveHistoryElem.style.padding = '10px';
+  moveHistoryElem.style.width = '200px';
+  moveHistoryElem.style.background = '#2a2a2a';
+  moveHistoryElem.style.border = '2px solid #ffd700';
+  moveHistoryElem.style.borderRadius = '8px';
+  moveHistoryElem.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.5)';
+  moveHistoryElem.style.padding = '12px';
   moveHistoryElem.style.margin = '18px 0';
   moveHistoryElem.style.fontSize = '1em';
-  moveHistoryElem.style.color = '#ffe082';
+  moveHistoryElem.style.color = '#ffd700';
   moveHistoryElem.style.maxHeight = '384px';
   moveHistoryElem.style.overflowY = 'auto';
   moveHistoryElem.innerHTML = '<b>Move History</b><div id="move-history-list"></div>';
@@ -167,9 +235,12 @@ const startFirstTurn = sessionStorage.getItem('startFirstTurn');
 socket.on('connect', () => {
   mySocketId = socket.id;
   console.log('[game.js] Connected to server. socket.id:', mySocketId);
-  // Join the game room and re-register color and role with server
-  socket.emit('joinGame', { room: roomCode, color: myColor, role: myRole });
-  console.log('[game.js] Emitted joinGame:', { room: roomCode, color: myColor, role: myRole });
+  // Only join game room if not in AI mode
+  if (!isAIMode) {
+    // Join the game room and re-register color and role with server
+    socket.emit('joinGame', { room: roomCode, color: myColor, role: myRole });
+    console.log('[game.js] Emitted joinGame:', { room: roomCode, color: myColor, role: myRole });
+  }
 });
 
 // Listen for startGame with color assignment and first turn
@@ -371,7 +442,7 @@ function highlightLastMove() {
 function renderBoard() {
   boardDiv.innerHTML = '';
   boardDiv.style.display = 'grid';
-  boardDiv.style.gridTemplate = `repeat(${boardSize}, 50px) / repeat(${boardSize}, 50px)`;
+  boardDiv.style.gridTemplate = `repeat(${boardSize}, 1fr) / repeat(${boardSize}, 1fr)`;
 
   // Always render red at the bottom, black at the top
   for (let displayRow = 0; displayRow < boardSize; displayRow++) {
@@ -381,8 +452,6 @@ function renderBoard() {
       square.className = 'square ' + ((row + col) % 2 === 1 ? 'dark' : 'light');
       square.dataset.row = row;
       square.dataset.col = col;
-      square.style.width = '50px';
-      square.style.height = '50px';
 
       // Highlight last move
       if (lastMove && lastMove.to && lastMove.to.row === row && lastMove.to.col === col) {
@@ -424,8 +493,10 @@ function performMoveWithAnimation(from, to, move, callback) {
     setTimeout(() => {
       const piece = board[to.row][to.col];
       if (move && move.jump && piece) {
-        // Send this jump to server
-        sendMoveToServer(from, to, move);
+        // Send this jump to server only if not in AI mode
+        if (!isAIMode) {
+          sendMoveToServer(from, to, move);
+        }
         const jumps = getValidMoves(to.row, to.col, true);
         if (jumps.length > 0) {
           const nextJump = jumps[0];
@@ -439,8 +510,10 @@ function performMoveWithAnimation(from, to, move, callback) {
           return;
         }
       } else {
-        // If not a jump, send the move to server (for normal moves)
-        sendMoveToServer(from, to, move);
+        // If not a jump, send the move to server only if not in AI mode
+        if (!isAIMode) {
+          sendMoveToServer(from, to, move);
+        }
       }
       callback && callback();
     }, 100);
@@ -514,9 +587,19 @@ function onSquareClick(e) {
     isMyTurn = false;
     lastMove = { from: { ...selected }, to: { row, col } };
     performMoveWithAnimation(selected, { row, col }, move, () => {
+      // Switch turns
+      currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
       renderBoard();
       highlightLastMove();
       updateStatus();
+      checkGameOver();
+
+      // If in AI mode, trigger AI move after player
+      if (isAIMode && !gameEnded) {
+        setTimeout(() => {
+          makeAIMove();
+        }, 1000);
+      }
     });
     selected = null;
     validMoves = [];
@@ -585,17 +668,34 @@ function countPieces(color) {
 
 function showEndGameScreen(message, points) {
   gameEnded = true;
+  const buttonHtml = isAIMode
+    ? `<button id="play-again-btn" style="margin-top:18px;padding:10px 28px;font-size:1em;background:#2e7a3c;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-right:10px;">Play Again</button>
+       <button id="leave-btn-final" style="margin-top:18px;padding:10px 28px;font-size:1em;background:#7a5c2e;color:#fff;border:none;border-radius:8px;cursor:pointer;">Back to Lobby</button>`
+    : `<button id="leave-btn-final" style="margin-top:18px;padding:10px 28px;font-size:1em;background:#7a5c2e;color:#fff;border:none;border-radius:8px;cursor:pointer;">Back to Lobby</button>`;
+  
   statusDiv.innerHTML = `
     <div style="font-size:1.5em;color:#ffd700;margin:18px 0 10px 0;">${message}</div>
     <div style="font-size:1.1em;color:#fff;">Your points: <b>${points}</b></div>
-    <button id="leave-btn-final" style="margin-top:18px;padding:10px 28px;font-size:1em;background:#7a5c2e;color:#fff;border:none;border-radius:8px;cursor:pointer;">Back to Lobby</button>
+    ${buttonHtml}
   `;
+  
   const leaveBtnFinal = document.getElementById('leave-btn-final');
   if (leaveBtnFinal) {
     leaveBtnFinal.onclick = () => {
       window.location.href = 'lobby.html';
     };
   }
+  
+  if (isAIMode) {
+    const playAgainBtn = document.getElementById('play-again-btn');
+    if (playAgainBtn) {
+      playAgainBtn.onclick = () => {
+        gameEnded = false;
+        startAIMode();
+      };
+    }
+  }
+  
   console.log('[game.js] showEndGameScreen:', message, points);
 }
 
@@ -639,12 +739,22 @@ function updateStatus() {
     console.log('[game.js] Status: Waiting for both players to be ready...');
     return;
   }
-  if (isMyTurn) {
-    statusDiv.textContent = `Your turn (${myColor})`;
-    console.log('[game.js] Status: Your turn', myColor);
+  if (isAIMode) {
+    if (currentPlayer === myColor) {
+      statusDiv.textContent = `Your turn (${myColor})`;
+      console.log('[game.js] Status: Your turn', myColor);
+    } else {
+      statusDiv.textContent = `AI's turn (${aiColor})`;
+      console.log('[game.js] Status: AI\'s turn', aiColor);
+    }
   } else {
-    statusDiv.textContent = `Opponent's turn (${currentPlayer})`;
-    console.log('[game.js] Status: Opponent\'s turn', currentPlayer);
+    if (isMyTurn) {
+      statusDiv.textContent = `Your turn (${myColor})`;
+      console.log('[game.js] Status: Your turn', myColor);
+    } else {
+      statusDiv.textContent = `Opponent's turn (${currentPlayer})`;
+      console.log('[game.js] Status: Opponent\'s turn', currentPlayer);
+    }
   }
 }
 
@@ -686,6 +796,70 @@ if (chatForm && chatInput && chatMessages) {
 if (!startBoard) {
   console.log('[game.js] No startBoard in sessionStorage, calling initBoard');
   initBoard();
+}
+
+// --- AI Logic ---
+function makeAIMove() {
+  if (!isAIMode || gameEnded || currentPlayer !== aiColor) {
+    console.log('[game.js] AI move check failed:', { isAIMode, gameEnded, currentPlayer, aiColor });
+    return;
+  }
+
+  console.log('[game.js] AI making move');
+
+  // Get all possible moves for AI
+  let allMoves = [];
+  let allJumps = [];
+
+  for (let row = 0; row < boardSize; row++) {
+    for (let col = 0; col < boardSize; col++) {
+      const piece = board[row][col];
+      if (piece && piece.color === aiColor) {
+        const moves = getValidMoves(row, col, false);
+        const jumps = getValidMoves(row, col, true);
+
+        moves.forEach(move => {
+          allMoves.push({
+            from: { row, col },
+            to: { row: move.row, col: move.col },
+            move: move
+          });
+        });
+
+        jumps.forEach(move => {
+          allJumps.push({
+            from: { row, col },
+            to: { row: move.row, col: move.col },
+            move: move
+          });
+        });
+      }
+    }
+  }
+
+  // Prefer jumps if available
+  const movesToConsider = allJumps.length > 0 ? allJumps : allMoves;
+
+  if (movesToConsider.length === 0) {
+    console.log('[game.js] AI has no moves');
+    return;
+  }
+
+  // Pick a random move (could be improved with better AI)
+  const randomMove = movesToConsider[Math.floor(Math.random() * movesToConsider.length)];
+
+  console.log('[game.js] AI selected move:', randomMove);
+
+  // Execute the move
+  lastMove = { from: randomMove.from, to: randomMove.to };
+  performMoveWithAnimation(randomMove.from, randomMove.to, randomMove.move, () => {
+    currentPlayer = 'red';
+    isMyTurn = true;
+    renderBoard();
+    highlightLastMove();
+    updateStatus();
+    checkGameOver();
+  });
 }
 
 // --- Video Chat Functionality ---
