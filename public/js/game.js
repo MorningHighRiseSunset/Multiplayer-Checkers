@@ -797,7 +797,7 @@ function makeAIMove() {
   // Execute the move
   lastMove = { from: randomMove.from, to: randomMove.to };
   performMoveWithAnimation(randomMove.from, randomMove.to, randomMove.move, () => {
-    currentPlayer = 'red';
+    currentPlayer = 'black'; // Switch to player's turn
     isMyTurn = true;
     renderBoard();
     highlightLastMove();
