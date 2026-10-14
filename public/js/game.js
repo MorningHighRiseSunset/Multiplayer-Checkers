@@ -51,6 +51,29 @@ if (playAiBtn) {
   };
 }
 
+// Start AI mode
+function startAIMode() {
+  console.log('[game.js] Starting AI mode');
+  isAIMode = true;
+  aiColor = 'red'; // AI plays as red
+  myColor = 'black'; // Player plays as black
+  myRole = 'Player 1';
+  
+  // Initialize the board
+  initBoard();
+  
+  // Set game state
+  gameStarted = true;
+  gameEnded = false;
+  currentPlayer = 'black';
+  isMyTurn = true;
+  
+  // Update UI
+  updateStatus();
+  
+  console.log('[game.js] AI mode started. Player:', myColor, 'AI:', aiColor);
+}
+
 // --- Room Logic ---
 // Generate random room code
 function generateRoomCode() {
