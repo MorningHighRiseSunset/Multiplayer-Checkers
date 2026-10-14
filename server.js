@@ -34,22 +34,14 @@ const roomTimeouts = {}; // Grace period for room deletion
 // Serve static files from public directory
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Serve index.html for root route
+// Serve game.html for root route
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Handle specific routes
-app.get("/lobby.html", (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'lobby.html'));
-});
-
-app.get("/game.html", (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'game.html'));
 });
 
-app.get("/room.html", (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'room.html'));
+// Handle game.html route
+app.get("/game.html", (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'game.html'));
 });
 
 process.on('uncaughtException', err => {
@@ -89,32 +81,25 @@ function getInitialBoard() {
 function maybeStartGame(room) {
   if (!rooms[room]) return;
   console.log('[server.js] maybeStartGame: rooms[room] state:', JSON.stringify(rooms[room], null, 2));
-  const readyIds = Object.keys(rooms[room].ready);
-  if (
-    readyIds.length === 2 &&
-    rooms[room].colors[readyIds[0]] &&
-    rooms[room].colors[readyIds[1]] &&
-    rooms[room].colors[readyIds[0]] !== rooms[room].colors[readyIds[1]]
-  ) {
+  
+  const playerCount = Object.keys(rooms[room].roles).length;
+  
+  // Auto-start when 2 players join
+  if (playerCount === 2 && !rooms[room].inGame) {
     const colorAssignments = {};
     const roles = rooms[room].roles;
-    let player1Id = null, player2Id = null;
-    for (const [sockId, roleName] of Object.entries(roles)) {
-      if (roleName === 'Player 1') player1Id = sockId;
-      if (roleName === 'Player 2') player2Id = sockId;
-    }
-    if (player1Id && player2Id) {
-      colorAssignments[player1Id] = rooms[room].colors[player1Id];
-      colorAssignments[player2Id] = rooms[room].colors[player2Id];
-    }
+    const socketIds = Object.keys(roles);
+    
+    // Auto-assign colors: Player 1 = Red, Player 2 = Black
+    colorAssignments[socketIds[0]] = 'red';
+    colorAssignments[socketIds[1]] = 'black';
+    
     let firstTurn = 'black';
-    if (!rooms[room].inGame) {
-      rooms[room].inGame = true;
-      rooms[room].board = getInitialBoard();
-      rooms[room].currentPlayer = firstTurn;
-      rooms[room].moveHistory = [];
-    }
-    io.to(room).emit('bothReady');
+    rooms[room].inGame = true;
+    rooms[room].board = getInitialBoard();
+    rooms[room].currentPlayer = firstTurn;
+    rooms[room].moveHistory = [];
+    
     io.to(room).emit('startGame', {
       colorAssignments,
       firstTurn,
@@ -122,9 +107,7 @@ function maybeStartGame(room) {
       moveHistory: rooms[room].moveHistory,
       roles: rooms[room].roles
     });
-    console.log('[server.js] maybeStartGame: startGame emitted to room', room, colorAssignments);
-  } else {
-    console.log('[server.js] maybeStartGame: Not ready to start. Ready IDs:', readyIds, 'Colors:', rooms[room].colors);
+    console.log('[server.js] Game auto-started in room', room, colorAssignments);
   }
 }
 
@@ -159,55 +142,38 @@ io.on('connection', (socket) => {
 
   socket.on('joinRoom', (roomCode) => {
     currentRoom = roomCode;
-    socket.join(roomCode);
-    if (!rooms[roomCode]) {
-      rooms[roomCode] = {
-        players: {},
-        ready: {},
-        colors: {},
-        roles: {},
-        inGame: false,
-        board: getInitialBoard(),
-        currentPlayer: 'black',
-        moveHistory: []
-      };
-      console.log('[server.js] Room auto-created on join:', roomCode);
-    }
-    // Clear any pending room deletion timeout
-    if (roomTimeouts[roomCode]) {
-      clearTimeout(roomTimeouts[roomCode]);
-      delete roomTimeouts[roomCode];
-      console.log('[server.js] Room deletion timeout cleared for', roomCode);
-    }
-    const roleCount = Object.keys(rooms[roomCode].roles).length;
-    myRole = roleCount === 0 ? 'Player 1' : 'Player 2';
-    rooms[roomCode].roles[socket.id] = myRole;
-    rooms[roomCode].players[socket.id] = null;
-    broadcastRoomState(roomCode);
-    socket.to(roomCode).emit('playerJoined', { role: myRole });
-    console.log('[server.js] joinRoom:', socket.id, 'as', myRole, 'in', roomCode);
-  });
-
-  socket.on('pickColor', ({ room, color }) => {
-    if (!rooms[room]) return;
-    rooms[room].colors[socket.id] = color;
-    broadcastRoomState(room);
-    io.to(room).emit('colorPicked', { color, byMe: false });
-    const pickedColors = Object.values(rooms[room].colors);
-    if (pickedColors.length === 2 && pickedColors[0] !== pickedColors[1]) {
-      io.to(room).emit('bothPicked');
-    }
-    console.log('[server.js] pickColor:', socket.id, color, 'in', room);
-  });
-
-  socket.on('playerReady', ({ room, color }) => {
-    if (!rooms[room]) return;
-    rooms[room].ready[socket.id] = true;
-    socket.to(room).emit('opponentReady', { color });
-    console.log('[server.js] playerReady:', socket.id, color, room);
-    console.log('[server.js] Current ready:', rooms[room].ready);
-    console.log('[server.js] Current colors:', rooms[room].colors);
-    maybeStartGame(room);
+    socket.join(roomCode, () => {
+      // Callback runs after successfully joined the room
+      if (!rooms[roomCode]) {
+        rooms[roomCode] = {
+          players: {},
+          ready: {},
+          colors: {},
+          roles: {},
+          inGame: false,
+          board: getInitialBoard(),
+          currentPlayer: 'black',
+          moveHistory: []
+        };
+        console.log('[server.js] Room auto-created on join:', roomCode);
+      }
+      // Clear any pending room deletion timeout
+      if (roomTimeouts[roomCode]) {
+        clearTimeout(roomTimeouts[roomCode]);
+        delete roomTimeouts[roomCode];
+        console.log('[server.js] Room deletion timeout cleared for', roomCode);
+      }
+      const roleCount = Object.keys(rooms[roomCode].roles).length;
+      myRole = roleCount === 0 ? 'Player 1' : 'Player 2';
+      rooms[roomCode].roles[socket.id] = myRole;
+      rooms[roomCode].players[socket.id] = null;
+      broadcastRoomState(roomCode);
+      socket.to(roomCode).emit('playerJoined', { role: myRole });
+      console.log('[server.js] joinRoom:', socket.id, 'as', myRole, 'in', roomCode);
+      
+      // Auto-start game if 2 players
+      maybeStartGame(roomCode);
+    });
   });
 
   socket.on('joinGame', ({ room, color, role }) => {
@@ -346,22 +312,6 @@ io.on('connection', (socket) => {
     }
     socket.to(room).emit('chatMessage', { sender, msg });
     console.log('[server.js] chatMessage:', sender, msg, 'in', room);
-  });
-
-  // Video chat streaming
-  socket.on('video-data', ({ room, data }) => {
-    socket.to(room).emit('video-data', { data, fromId: socket.id });
-    console.log('[server.js] video-data relayed from', socket.id, 'in room', room);
-  });
-
-  socket.on('video-ready', ({ room }) => {
-    socket.to(room).emit('opponent-video-ready', { playerId: socket.id });
-    console.log('[server.js] video-ready from', socket.id, 'in room', room);
-  });
-
-  socket.on('video-disabled', ({ room }) => {
-    socket.to(room).emit('video-disabled', { playerId: socket.id });
-    console.log('[server.js] video-disabled from', socket.id, 'in room', room);
   });
 
   socket.on('disconnect', () => {

@@ -5,18 +5,17 @@ const socket = io('https://multiplayer-checkers.onrender.com', {
 const params = new URLSearchParams(window.location.search);
 const roomCode = params.get('room');
 
-// Always get assigned color and role from sessionStorage (set in room.js)
-let myColor = sessionStorage.getItem('myAssignedColor');
-let myRole = sessionStorage.getItem('myRole');
+// Game state
+let myColor = null;
+let myRole = null;
 let mySocketId = null;
+let currentRoom = null;
 
 // AI mode flag
 let isAIMode = false;
 let aiColor = null;
 
 console.log('[game.js] Loaded. roomCode:', roomCode);
-console.log('[game.js] myColor from sessionStorage:', myColor);
-console.log('[game.js] myRole from sessionStorage:', myRole);
 
 // --- Join URL and AI button logic ---
 const joinUrlDiv = document.getElementById('join-url');
@@ -52,74 +51,89 @@ if (playAiBtn) {
   };
 }
 
-// Start AI mode
-function startAIMode() {
-  console.log('[game.js] Starting AI mode');
-  isAIMode = true;
-  myColor = 'red'; // Player is always red (bottom)
-  aiColor = 'black'; // AI is always black (top)
-  myRole = 'Player';
-  currentPlayer = 'black'; // AI goes first (black)
-  isMyTurn = false;
-  gameStarted = true;
-  gameEnded = false;
-
-  // Initialize board
-  initBoard();
-
-  // Hide join URL section and Play AI button
-  if (joinUrlDiv) joinUrlDiv.style.display = 'none';
-  if (copyUrlBtn) copyUrlBtn.style.display = 'none';
-  if (playAiBtn) playAiBtn.style.display = 'none';
-
-  updateStatus();
-
-  // AI makes first move after a short delay
-  setTimeout(() => {
-    if (currentPlayer === aiColor) {
-      makeAIMove();
-    }
-  }, 1000);
+// --- Room Logic ---
+// Generate random room code
+function generateRoomCode() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
 }
 
+// Initialize room on load
+function initializeRoom() {
+  if (roomCode) {
+    // Join existing room
+    currentRoom = roomCode;
+    socket.emit('joinRoom', currentRoom);
+    console.log('[game.js] Joining existing room:', currentRoom);
+  } else {
+    // Create new room
+    currentRoom = generateRoomCode();
+    socket.emit('createRoom', currentRoom);
+    socket.emit('joinRoom', currentRoom);
+    
+    // Update URL
+    const url = new URL(window.location.href);
+    url.searchParams.set('room', currentRoom);
+    window.history.replaceState({}, '', url);
+    
+    // Update join URL display
+    if (joinUrlDiv) {
+      joinUrlDiv.textContent = url.href;
+    }
+    
+    console.log('[game.js] Created new room:', currentRoom);
+  }
+}
+
+// Handle start game
+socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveHistory: serverHistory, roles, lastMove: serverLastMove }) => {
+  console.log('[game.js] startGame event received:', { colorAssignments, firstTurn, roles });
+  
+  // Assign my color from server
+  if (colorAssignments && socket.id in colorAssignments) {
+    myColor = colorAssignments[socket.id];
+    sessionStorage.setItem('myAssignedColor', myColor);
+    console.log('[game.js] Assigned myColor from server:', myColor);
+  }
+  if (roles && roles[socket.id]) {
+    myRole = roles[socket.id];
+    sessionStorage.setItem('myRole', myRole);
+    console.log('[game.js] Assigned myRole from server:', myRole);
+  }
+  
+  currentPlayer = firstTurn || 'black';
+  isMyTurn = (myColor === currentPlayer);
+  gameStarted = true;
+  gameEnded = false;
+  
+  if (serverBoard) board = JSON.parse(JSON.stringify(serverBoard));
+  if (serverHistory) moveHistory = [...serverHistory];
+  if (serverLastMove) lastMove = serverLastMove;
+  else lastMove = null;
+  
+  renderBoard();
+  renderMoveHistory();
+  highlightLastMove();
+  updateStatus();
+  checkGameOver();
+});
+
+// Handle player joined
+socket.on('playerJoined', ({ role }) => {
+  console.log('[game.js] playerJoined:', role);
+  statusDiv.textContent = `${role} joined - starting game...`;
+});
+
+// --- Move history panel ---
+let moveHistoryElem = document.getElementById('move-history');
 const boardSize = 8;
 const boardDiv = document.getElementById('game-board');
 const statusDiv = document.getElementById('game-status');
 const printBtn = document.getElementById('print-btn');
-
-// --- Move history panel ---
-// Remove old moveHistoryList if present
-let oldMoveHistoryList = document.getElementById('move-history');
-if (oldMoveHistoryList && oldMoveHistoryList.tagName === 'UL') {
-  oldMoveHistoryList.parentNode.removeChild(oldMoveHistoryList);
-}
-
-// Create styled move history panel if not present
-let moveHistoryElem = document.getElementById('move-history');
-if (!moveHistoryElem || moveHistoryElem.tagName === 'UL') {
-  // Remove old UL if present
-  if (moveHistoryElem && moveHistoryElem.tagName === 'UL') {
-    moveHistoryElem.parentNode.removeChild(moveHistoryElem);
-  }
-  moveHistoryElem = document.createElement('div');
-  moveHistoryElem.id = 'move-history';
-  moveHistoryElem.style.width = '200px';
-  moveHistoryElem.style.background = '#2a2a2a';
-  moveHistoryElem.style.border = '2px solid #ffd700';
-  moveHistoryElem.style.borderRadius = '8px';
-  moveHistoryElem.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.5)';
-  moveHistoryElem.style.padding = '12px';
-  moveHistoryElem.style.margin = '18px 0';
-  moveHistoryElem.style.fontSize = '1em';
-  moveHistoryElem.style.color = '#ffd700';
-  moveHistoryElem.style.maxHeight = '384px';
-  moveHistoryElem.style.overflowY = 'auto';
-  moveHistoryElem.innerHTML = '<b>Move History</b><div id="move-history-list"></div>';
-  // Insert after boardDiv
-  if (boardDiv && boardDiv.parentNode) {
-    boardDiv.parentNode.insertBefore(moveHistoryElem, boardDiv.nextSibling);
-  }
-}
 
 // --- Move history panel logic ---
 function renderMoveHistory() {
@@ -128,70 +142,13 @@ function renderMoveHistory() {
     return;
   }
   
-  const list = moveHistoryElem.querySelector('#move-history-list');
-  if (!list) {
-    console.warn('[game.js] move-history-list not found, skipping renderMoveHistory');
-    return;
-  }
-  
-  list.innerHTML = '';
+  moveHistoryElem.innerHTML = '';
   let moves = moveHistory || [];
-  for (let i = 0; i < moves.length; i += 2) {
-    const row = document.createElement('div');
-    row.style.display = 'flex';
-    row.style.justifyContent = 'space-between';
-    row.style.alignItems = 'center';
-    row.style.marginBottom = '2px';
-
-    let moveNum = document.createElement('span');
-    moveNum.textContent = (i / 2 + 1) + '.';
-    moveNum.style.marginRight = '6px';
-    moveNum.style.color = '#ffe082';
-
-    // Convert move objects to notation
-    let whiteMove = document.createElement('a');
-    whiteMove.textContent = moves[i] ? moveToNotation(moves[i]) : '';
-    whiteMove.style.cursor = 'pointer';
-    whiteMove.style.color = '#fff';
-    whiteMove.onclick = () => jumpToMove(i);
-
-    let blackMove = document.createElement('a');
-    blackMove.textContent = moves[i + 1] ? moveToNotation(moves[i + 1]) : '';
-    blackMove.style.cursor = 'pointer';
-    blackMove.style.color = '#fff';
-    blackMove.onclick = () => jumpToMove(i + 1);
-
-    row.appendChild(moveNum);
-    row.appendChild(whiteMove);
-    row.appendChild(document.createTextNode(' '));
-    row.appendChild(blackMove);
-    list.appendChild(row);
+  for (let i = 0; i < moves.length; i++) {
+    const li = document.createElement('li');
+    li.textContent = moves[i];
+    moveHistoryElem.appendChild(li);
   }
-}
-
-// Helper to convert move object to notation
-function moveToNotation(move) {
-  if (!move) return '';
-  // If move is already a string, return as is
-  if (typeof move === 'string') return move;
-  // If move is object: {from: {row, col}, to: {row, col}, ...}
-  let from = move.from ? algebraic(move.from.row, move.from.col) : '';
-  let to = move.to ? algebraic(move.to.row, move.to.col) : '';
-  let promo = move.promotion ? '=' + move.promotion : '';
-  return from + '-' + to + promo;
-}
-
-// Algebraic notation for checkers (A1-H8, bottom left is A1)
-function algebraic(row, col) {
-  // Red always at bottom, so row 7 is 1, row 0 is 8
-  const file = String.fromCharCode('A'.charCodeAt(0) + col);
-  const rank = (8 - row);
-  return file + rank;
-}
-
-function jumpToMove(idx) {
-  // Not implemented: would require server to send FENs or board states for each move.
-  alert('Jump to move not implemented in this version.');
 }
 
 // --- Add Leave Game button ---
@@ -205,8 +162,8 @@ if (!leaveBtn) {
 
 leaveBtn.onclick = () => {
   console.log('[game.js] Leave Game clicked');
-  socket.emit('leaveGame', { room: roomCode, color: myColor });
-  window.location.href = 'lobby.html';
+  socket.emit('leaveGame', { room: currentRoom || roomCode, color: myColor });
+  window.location.href = '/';
 };
 
 // --- Chat elements ---
@@ -235,41 +192,9 @@ const startFirstTurn = sessionStorage.getItem('startFirstTurn');
 socket.on('connect', () => {
   mySocketId = socket.id;
   console.log('[game.js] Connected to server. socket.id:', mySocketId);
-  // Only join game room if not in AI mode
-  if (!isAIMode) {
-    // Join the game room and re-register color and role with server
-    socket.emit('joinGame', { room: roomCode, color: myColor, role: myRole });
-    console.log('[game.js] Emitted joinGame:', { room: roomCode, color: myColor, role: myRole });
-  }
-});
-
-// Listen for startGame with color assignment and first turn
-socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveHistory: serverHistory, roles, lastMove: serverLastMove }) => {
-  console.log('[game.js] startGame event received:', { colorAssignments, firstTurn, roles });
-  // Assign my color if server sends it (should match sessionStorage)
-  if (colorAssignments && socket.id in colorAssignments) {
-    myColor = colorAssignments[socket.id];
-    sessionStorage.setItem('myAssignedColor', myColor);
-    console.log('[game.js] Assigned myColor from server:', myColor);
-  }
-  if (roles && roles[socket.id]) {
-    myRole = roles[socket.id];
-    sessionStorage.setItem('myRole', myRole);
-    console.log('[game.js] Assigned myRole from server:', myRole);
-  }
-  currentPlayer = firstTurn || 'black';
-  isMyTurn = (myColor === currentPlayer);
-  gameStarted = true;
-  gameEnded = false;
-  if (serverBoard) board = JSON.parse(JSON.stringify(serverBoard));
-  if (serverHistory) moveHistory = [...serverHistory];
-  if (serverLastMove) lastMove = serverLastMove;
-  else lastMove = null;
-  renderBoard();
-  renderMoveHistory();
-  highlightLastMove();
-  updateStatus();
-  checkGameOver();
+  
+  // Initialize room
+  initializeRoom();
 });
 
 // --- Updated syncBoard to animate opponent's moves step-by-step ---
@@ -616,7 +541,7 @@ function onSquareClick(e) {
 function sendMoveToServer(from, to, move) {
   console.log('[game.js] Sending move to server:', { from, to, move });
   socket.emit('move', {
-    room: roomCode,
+    room: currentRoom || roomCode,
     from,
     to,
     move
@@ -670,8 +595,8 @@ function showEndGameScreen(message, points) {
   gameEnded = true;
   const buttonHtml = isAIMode
     ? `<button id="play-again-btn" style="margin-top:18px;padding:10px 28px;font-size:1em;background:#2e7a3c;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-right:10px;">Play Again</button>
-       <button id="leave-btn-final" style="margin-top:18px;padding:10px 28px;font-size:1em;background:#7a5c2e;color:#fff;border:none;border-radius:8px;cursor:pointer;">Back to Lobby</button>`
-    : `<button id="leave-btn-final" style="margin-top:18px;padding:10px 28px;font-size:1em;background:#7a5c2e;color:#fff;border:none;border-radius:8px;cursor:pointer;">Back to Lobby</button>`;
+       <button id="leave-btn-final" style="margin-top:18px;padding:10px 28px;font-size:1em;background:#7a5c2e;color:#fff;border:none;border-radius:8px;cursor:pointer;">New Game</button>`
+    : `<button id="leave-btn-final" style="margin-top:18px;padding:10px 28px;font-size:1em;background:#7a5c2e;color:#fff;border:none;border-radius:8px;cursor:pointer;">New Game</button>`;
   
   statusDiv.innerHTML = `
     <div style="font-size:1.5em;color:#ffd700;margin:18px 0 10px 0;">${message}</div>
@@ -682,7 +607,7 @@ function showEndGameScreen(message, points) {
   const leaveBtnFinal = document.getElementById('leave-btn-final');
   if (leaveBtnFinal) {
     leaveBtnFinal.onclick = () => {
-      window.location.href = 'lobby.html';
+      window.location.href = '/';
     };
   }
   
@@ -730,13 +655,9 @@ printBtn.onclick = () => {
 
 function updateStatus() {
   if (gameEnded) return;
-  if (!myColor) {
-    statusDiv.textContent = "Spectator mode";
-    return;
-  }
   if (!gameStarted) {
-    statusDiv.textContent = "Waiting for both players to be ready...";
-    console.log('[game.js] Status: Waiting for both players to be ready...');
+    statusDiv.textContent = "Waiting for opponent to join...";
+    console.log('[game.js] Status: Waiting for opponent to join...');
     return;
   }
   if (isAIMode) {
@@ -761,7 +682,7 @@ function updateStatus() {
 // Leave game if window/tab closed
 window.addEventListener('beforeunload', () => {
   console.log('[game.js] beforeunload: leaving game');
-  socket.emit('leaveGame', { room: roomCode, color: myColor });
+  socket.emit('leaveGame', { room: currentRoom || roomCode, color: myColor });
 });
 
 // --- Chat box logic ---
@@ -773,7 +694,7 @@ if (chatForm && chatInput && chatMessages) {
       // Use myRole if available, else fallback to "You"
       const senderLabel = myRole ? myRole : "You";
       appendChatMessage(senderLabel, msg);
-      socket.emit('chatMessage', { room: roomCode, msg });
+      socket.emit('chatMessage', { room: currentRoom || roomCode, msg });
       chatInput.value = '';
       console.log('[game.js] Chat message sent:', msg);
     }
@@ -862,225 +783,190 @@ function makeAIMove() {
   });
 }
 
-// --- Video Chat Functionality ---
-let videoChat = null; // Main video chat state
+// --- Video Chat Functionality (PeerJS) ---
+let peer = null;
 let localStream = null;
-let remoteStream = null;
-let mediaRecorder = null;
-let videoChunks = [];
+let currentCall = null;
 let isVideoEnabled = true;
 let isAudioEnabled = true;
-let videoInterval = null;
 
 // Video chat elements
-const videoChatToggleBtn = document.getElementById('video-chat-toggle-btn');
 const videoContainer = document.getElementById('video-container');
 const localVideo = document.getElementById('local-video');
 const remoteVideo = document.getElementById('remote-video');
 const localPlaceholder = document.getElementById('local-placeholder');
 const remotePlaceholder = document.getElementById('remote-placeholder');
 const videoStatus = document.getElementById('video-status');
+const startVideoBtn = document.getElementById('start-video-btn');
 const toggleVideoBtn = document.getElementById('toggle-video-btn');
 const toggleAudioBtn = document.getElementById('toggle-audio-btn');
 const leaveVideoBtn = document.getElementById('leave-video-btn');
-const minimizeBtn = document.getElementById('minimize-btn');
+
+// Get peer ID from URL or generate new one
+const urlParams = new URLSearchParams(window.location.search);
+const remotePeerId = urlParams.get('peer');
 
 // Initialize video chat button event listeners
 function initializeVideoChatButtons() {
-  // Main toggle button
-  videoChatToggleBtn.addEventListener('click', toggleVideoChat);
-  
-  // Control buttons
+  startVideoBtn.addEventListener('click', startVideoChat);
   toggleVideoBtn.addEventListener('click', toggleVideo);
   toggleAudioBtn.addEventListener('click', toggleAudio);
-  leaveVideoBtn.addEventListener('click', leaveVideoChat);
-  minimizeBtn.addEventListener('click', toggleMinimize);
+  leaveVideoBtn.addEventListener('click', stopVideoChat);
 }
 
-// Main video chat toggle function
-async function toggleVideoChat() {
-  if (videoChat === null) {
-    // Start video chat
-    await startVideoChat();
-  } else {
-    // Stop video chat
-    stopVideoChat();
-  }
-}
-
-// Start video chat
+// Start video chat with PeerJS
 async function startVideoChat() {
-  console.log('[game.js] Starting video chat');
+  console.log('[game.js] Starting video chat with PeerJS');
   
   try {
-    // Initialize media stream
-    await initializeVideoChat();
+    // Initialize PeerJS
+    peer = new Peer();
     
-    // Update UI state
-    videoChat = true;
-    videoChatToggleBtn.classList.add('active');
-    videoChatToggleBtn.textContent = '🔴';
-    videoChatToggleBtn.title = 'Stop Video Chat';
-    videoContainer.style.display = 'block';
+    peer.on('open', (id) => {
+      console.log('[game.js] My peer ID:', id);
+      videoStatus.textContent = 'Video chat ready - share your URL with opponent';
+      
+      // Update URL with peer ID
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.set('peer', id);
+      window.history.replaceState({}, '', currentUrl);
+      
+      // Update join URL display
+      const joinUrlDiv = document.getElementById('join-url');
+      if (joinUrlDiv) {
+        joinUrlDiv.textContent = currentUrl.href;
+      }
+      
+      // Show control buttons
+      startVideoBtn.style.display = 'none';
+      toggleVideoBtn.style.display = 'inline-block';
+      toggleAudioBtn.style.display = 'inline-block';
+      leaveVideoBtn.style.display = 'inline-block';
+      
+      // If remote peer ID in URL, connect to them
+      if (remotePeerId && remotePeerId !== id) {
+        connectToPeer(remotePeerId);
+      }
+    });
     
-    // Show placeholders
-    showLocalPlaceholder();
+    peer.on('call', (call) => {
+      console.log('[game.js] Incoming call from:', call.peer);
+      answerCall(call);
+    });
+    
+    peer.on('error', (err) => {
+      console.error('[game.js] PeerJS error:', err);
+      videoStatus.textContent = 'Video chat error: ' + err.type;
+    });
+    
+    // Get local media stream
+    localStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 320, height: 240 },
+      audio: true
+    });
+    
+    localVideo.srcObject = localStream;
+    localVideo.play();
+    
+    hideLocalPlaceholder();
     showRemotePlaceholder();
-    
-    videoStatus.textContent = 'Video chat ready - waiting for opponent...';
     
   } catch (error) {
     console.error('[game.js] Failed to start video chat:', error);
-    videoStatus.textContent = 'Failed to start video chat';
-    videoChat = null;
+    videoStatus.textContent = 'Failed to start video chat: ' + error.message;
+    if (peer) {
+      peer.destroy();
+      peer = null;
+    }
   }
+}
+
+// Connect to remote peer
+function connectToPeer(peerId) {
+  console.log('[game.js] Connecting to peer:', peerId);
+  videoStatus.textContent = 'Connecting to opponent...';
+  
+  const call = peer.call(peerId, localStream);
+  
+  call.on('stream', (remoteStream) => {
+    console.log('[game.js] Received remote stream');
+    remoteVideo.srcObject = remoteStream;
+    remoteVideo.play();
+    hideRemotePlaceholder();
+    videoStatus.textContent = 'Video chat connected!';
+  });
+  
+  call.on('close', () => {
+    console.log('[game.js] Call ended');
+    videoStatus.textContent = 'Opponent disconnected';
+    showRemotePlaceholder();
+  });
+  
+  currentCall = call;
+}
+
+// Answer incoming call
+function answerCall(call) {
+  videoStatus.textContent = 'Incoming call...';
+  
+  call.answer(localStream);
+  
+  call.on('stream', (remoteStream) => {
+    console.log('[game.js] Call answered, received stream');
+    remoteVideo.srcObject = remoteStream;
+    remoteVideo.play();
+    hideRemotePlaceholder();
+    videoStatus.textContent = 'Video chat connected!';
+  });
+  
+  call.on('close', () => {
+    console.log('[game.js] Call ended');
+    videoStatus.textContent = 'Opponent disconnected';
+    showRemotePlaceholder();
+  });
+  
+  currentCall = call;
 }
 
 // Stop video chat
 function stopVideoChat() {
   console.log('[game.js] Stopping video chat');
   
-  // Cleanup media
-  cleanupVideoChat();
-  
-  // Update UI state
-  videoChat = null;
-  videoChatToggleBtn.classList.remove('active');
-  videoChatToggleBtn.textContent = '📹';
-  videoChatToggleBtn.title = 'Start Video Chat';
-  videoContainer.style.display = 'none';
-  
-  // Notify server
-  socket.emit('video-disabled', { room: roomCode });
-}
-
-// Initialize video chat media
-async function initializeVideoChat() {
-  console.log('[game.js] initializeVideoChat called');
-  
-  try {
-    // Check if getUserMedia is supported
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw new Error('getUserMedia not supported');
-    }
-
-    // Request camera and microphone access
-    localStream = await navigator.mediaDevices.getUserMedia({
-      video: { 
-        width: { ideal: 120, max: 240 },
-        height: { ideal: 90, max: 180 },
-        facingMode: 'user'
-      },
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
-      }
-    });
-    
-    // Display local video
-    localVideo.srcObject = localStream;
-    console.log('[game.js] Set localVideo.srcObject to stream');
-    
-    // Ensure video plays
-    localVideo.onloadedmetadata = () => {
-      console.log('[game.js] Local video metadata loaded');
-      localVideo.play().catch(e => console.error('[game.js] Error playing local video:', e));
-    };
-    
-    console.log('[game.js] Video chat initialized successfully');
-    console.log('[game.js] Local stream tracks:', localStream.getTracks().map(t => t.kind));
-    
-    // Notify server that video is ready
-    socket.emit('video-ready', { room: roomCode });
-    
-    // Start streaming
-    startVideoStream();
-    
-  } catch (error) {
-    console.error('[game.js] Error accessing media devices:', error);
-    if (error.name === 'NotAllowedError') {
-      videoStatus.textContent = 'Camera/microphone access denied - check permissions';
-    } else if (error.name === 'NotFoundError') {
-      videoStatus.textContent = 'No camera/microphone found';
-    } else {
-      videoStatus.textContent = 'Video chat not available';
-    }
-    throw error;
-  }
-}
-
-// Start video streaming
-function startVideoStream() {
-  if (!localStream) return;
-  
-  try {
-    // Create MediaRecorder
-    mediaRecorder = new MediaRecorder(localStream, {
-      mimeType: 'video/webm;codecs=vp8',
-      videoBitsPerSecond: 100000 // Low bitrate for small video
-    });
-    
-    mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        // Send video data to opponent
-        socket.emit('video-data', {
-          room: roomCode,
-          data: event.data
-        });
-      }
-    };
-    
-    mediaRecorder.start(100); // Send data every 100ms
-    console.log('[game.js] Video streaming started');
-    
-  } catch (error) {
-    console.error('[game.js] Error starting video stream:', error);
-    videoStatus.textContent = 'Video streaming failed';
-  }
-}
-
-// Stop video streaming
-function stopVideoStream() {
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    mediaRecorder.stop();
-    mediaRecorder = null;
+  if (currentCall) {
+    currentCall.close();
+    currentCall = null;
   }
   
-  console.log('[game.js] Video streaming stopped');
-}
-
-// Cleanup video chat
-function cleanupVideoChat() {
-  // Stop streaming
-  stopVideoStream();
+  if (peer) {
+    peer.destroy();
+    peer = null;
+  }
   
-  // Stop all camera/microphone tracks
   if (localStream) {
-    localStream.getTracks().forEach(track => {
-      track.stop();
-      console.log('[game.js] Stopped track:', track.kind);
-    });
+    localStream.getTracks().forEach(track => track.stop());
     localStream = null;
   }
   
-  // Clear videos
   if (localVideo.srcObject) {
     localVideo.srcObject = null;
   }
-  if (remoteVideo.src) {
-    URL.revokeObjectURL(remoteVideo.src);
-    remoteVideo.src = '';
+  
+  if (remoteVideo.srcObject) {
+    remoteVideo.srcObject = null;
   }
   
-  // Show placeholders
+  // Update UI
+  startVideoBtn.style.display = 'inline-block';
+  toggleVideoBtn.style.display = 'none';
+  toggleAudioBtn.style.display = 'none';
+  leaveVideoBtn.style.display = 'none';
+  videoStatus.textContent = 'Click Start to begin video chat';
+  
   showLocalPlaceholder();
   showRemotePlaceholder();
-  
-  console.log('[game.js] Video chat cleaned up');
 }
 
-// Toggle video (camera on/off)
+// Toggle video
 function toggleVideo() {
   if (!localStream) return;
   
@@ -1089,7 +975,6 @@ function toggleVideo() {
     isVideoEnabled = !isVideoEnabled;
     videoTrack.enabled = isVideoEnabled;
     
-    // Update button
     toggleVideoBtn.textContent = isVideoEnabled ? '🔴' : '📹';
     toggleVideoBtn.title = isVideoEnabled ? 'Turn off camera' : 'Turn on camera';
     
@@ -1100,12 +985,10 @@ function toggleVideo() {
       toggleVideoBtn.classList.add('muted');
       showLocalPlaceholder();
     }
-    
-    console.log('[game.js] Video toggled:', isVideoEnabled);
   }
 }
 
-// Toggle audio (microphone on/off)
+// Toggle audio
 function toggleAudio() {
   if (!localStream) return;
   
@@ -1114,7 +997,6 @@ function toggleAudio() {
     isAudioEnabled = !isAudioEnabled;
     audioTrack.enabled = isAudioEnabled;
     
-    // Update button
     toggleAudioBtn.textContent = isAudioEnabled ? '🔊' : '🔇';
     toggleAudioBtn.title = isAudioEnabled ? 'Mute microphone' : 'Unmute microphone';
     
@@ -1123,117 +1005,35 @@ function toggleAudio() {
     } else {
       toggleAudioBtn.classList.add('muted');
     }
-    
-    console.log('[game.js] Audio toggled:', isAudioEnabled);
   }
 }
 
 // Leave video chat
 function leaveVideoChat() {
-  console.log('[game.js] Leaving video chat');
   stopVideoChat();
 }
 
-// Toggle minimize
-function toggleMinimize() {
-  const isMinimized = videoContainer.classList.contains('minimized');
-  
-  if (isMinimized) {
-    videoContainer.classList.remove('minimized');
-    minimizeBtn.textContent = '−';
-    minimizeBtn.title = 'Minimize';
-  } else {
-    videoContainer.classList.add('minimized');
-    minimizeBtn.textContent = '+';
-    minimizeBtn.title = 'Expand';
-  }
-}
-
-// Show local placeholder
 function showLocalPlaceholder() {
   localPlaceholder.style.display = 'flex';
   localVideo.style.display = 'none';
 }
 
-// Hide local placeholder
 function hideLocalPlaceholder() {
   localPlaceholder.style.display = 'none';
   localVideo.style.display = 'block';
 }
 
-// Show remote placeholder
 function showRemotePlaceholder() {
   remotePlaceholder.style.display = 'flex';
   remoteVideo.style.display = 'none';
 }
 
-// Hide remote placeholder
 function hideRemotePlaceholder() {
   remotePlaceholder.style.display = 'none';
   remoteVideo.style.display = 'block';
 }
 
-// Handle incoming video data
-socket.on('video-data', ({ data, fromId }) => {
-  if (fromId === socket.id) return; // Don't display our own video
-  
-  try {
-    // Create blob from video data
-    const blob = new Blob([data], { type: 'video/webm' });
-    const videoUrl = URL.createObjectURL(blob);
-    
-    // Display remote video
-    remoteVideo.src = videoUrl;
-    remoteVideo.onloadedmetadata = () => {
-      remoteVideo.play().catch(e => console.error('[game.js] Error playing remote video:', e));
-      hideRemotePlaceholder();
-    };
-    
-    // Clean up old URL
-    remoteVideo.onended = () => {
-      URL.revokeObjectURL(videoUrl);
-    };
-    
-    videoStatus.textContent = 'Video chat connected!';
-    
-  } catch (error) {
-    console.error('[game.js] Error handling video data:', error);
-  }
-});
-
-// Handle opponent turning off their camera
-socket.on('video-disabled', ({ playerId }) => {
-  console.log('[game.js] Opponent disabled video:', playerId);
-  videoStatus.textContent = 'Opponent left video chat';
-  
-  // Clear remote video and show placeholder
-  if (remoteVideo.src) {
-    URL.revokeObjectURL(remoteVideo.src);
-    remoteVideo.src = '';
-  }
-  showRemotePlaceholder();
-});
-
-// Handle opponent video ready
-socket.on('opponent-video-ready', ({ playerId }) => {
-  console.log('[game.js] Opponent video ready:', playerId);
-  videoStatus.textContent = 'Opponent joined video chat';
-  
-  if (videoChat && localStream) {
-    startVideoStream();
-  }
-});
-
 // Initialize video chat buttons when page loads
 document.addEventListener('DOMContentLoaded', () => {
   initializeVideoChatButtons();
-});
-
-// Initialize video chat when game starts (optional auto-start)
-socket.on('startGame', (data) => {
-  console.log('[game.js] Game started, video chat ready');
-  console.log('[game.js] startGame data:', data);
-  
-  // Video chat is now available but not auto-started
-  // Users can click the floating button to start
 });

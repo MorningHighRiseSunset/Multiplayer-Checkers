@@ -7,81 +7,105 @@
   <!-- Vercel Web Analytics -->
   <script defer src="https://cdn.vercel-insights.com/v1/script.js"></script>
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
-  <h1>PvP Checkers</h1>
-  <div id="join-url-section" style="margin-bottom: 18px; display: flex; align-items: center; gap: 10px; justify-content: center;">
-    <div id="join-url" style="font-size: 0.9em; color: #ffd700; background: #222; padding: 8px 12px; border-radius: 6px; border: 1px solid #ffd700; word-break: break-all;"></div>
-    <button id="copy-url-btn" style="padding: 8px 16px; border-radius: 6px; border: none; background: #a67c38; color: #fff; font-weight: bold; cursor: pointer;">Copy URL</button>
-    <button id="play-ai-btn" style="padding: 8px 16px; border-radius: 6px; border: none; background: #2e7a3c; color: #fff; font-weight: bold; cursor: pointer;">Play AI</button>
-  </div>
-  <div id="controls" style="margin-bottom: 18px;">
-    <button id="print-btn">Print Moves</button>
-    <!-- Leave Game button will be added by JS if not present -->
-  </div>
-  <div id="game-status" style="margin-bottom: 18px; font-size: 1.2em; color: #ffd700;"></div>
+  <h1 class="main-title">PvP Checkers</h1>
   
-  <!-- Floating Video Chat Toggle Button -->
-  <button id="video-chat-toggle-btn" class="video-chat-toggle-btn" title="Start Video Chat">
-    📹
-  </button>
-  
-  <!-- Video Chat Container -->
-  <div id="video-container" class="video-container" style="display: none;">
-    <div class="video-header">
-      <span class="video-title">Video Chat</span>
-      <div class="video-controls">
-        <button id="minimize-btn" class="video-control-btn" title="Minimize">−</button>
-        <button id="leave-video-btn" class="video-control-btn danger" title="Leave Video Chat">❌</button>
+  <div class="main-container">
+    <!-- Left Panel: Game Info -->
+    <div class="side-panel left-panel">
+      <div class="panel-section">
+        <h3>Game Info</h3>
+        <div id="join-url-section">
+          <div id="join-url"></div>
+          <div class="url-buttons">
+            <button id="copy-url-btn">Copy URL</button>
+            <button id="play-ai-btn">Play AI</button>
+          </div>
+        </div>
+      </div>
+      
+      <div class="panel-section">
+        <h3>Controls</h3>
+        <div id="controls">
+          <button id="print-btn">Print Moves</button>
+        </div>
+      </div>
+      
+      <div class="panel-section">
+        <h3>Status</h3>
+        <div id="game-status"></div>
+      </div>
+      
+      <div class="panel-section">
+        <h3>Move History</h3>
+        <div id="move-history-container">
+          <ol id="move-history"></ol>
+        </div>
       </div>
     </div>
     
-    <div class="video-content">
-      <div class="video-grid">
-        <div class="video-item">
-          <div class="video-wrapper">
-            <video id="local-video" autoplay muted playsinline></video>
-            <div id="local-placeholder" class="video-placeholder" style="display: none;">
-              <div class="placeholder-icon">👤</div>
-              <div class="placeholder-text">Your Camera</div>
+    <!-- Center: Game Board -->
+    <div class="center-panel">
+      <div id="game-board"></div>
+    </div>
+    
+    <!-- Right Panel: Chat & Video -->
+    <div class="side-panel right-panel">
+      <div class="panel-section video-section">
+        <h3>Video Chat</h3>
+        <div id="video-container" class="video-container">
+          <div class="video-content">
+            <div class="video-grid-stacked">
+              <div class="video-item">
+                <div class="video-wrapper">
+                  <video id="local-video" autoplay muted playsinline></video>
+                  <div id="local-placeholder" class="video-placeholder">
+                    <div class="placeholder-icon">👤</div>
+                    <div class="placeholder-text">Your Camera</div>
+                  </div>
+                </div>
+                <div class="video-label">You</div>
+              </div>
+              
+              <div class="video-item">
+                <div class="video-wrapper">
+                  <video id="remote-video" autoplay playsinline></video>
+                  <div id="remote-placeholder" class="video-placeholder">
+                    <div class="placeholder-icon">👤</div>
+                    <div class="placeholder-text">Waiting for opponent...</div>
+                  </div>
+                </div>
+                <div class="video-label">Opponent</div>
+              </div>
             </div>
-          </div>
-          <div class="video-label">You</div>
-        </div>
-        
-        <div class="video-item">
-          <div class="video-wrapper">
-            <video id="remote-video" autoplay playsinline></video>
-            <div id="remote-placeholder" class="video-placeholder">
-              <div class="placeholder-icon">👤</div>
-              <div class="placeholder-text">Waiting for opponent...</div>
+            
+            <div class="video-controls-bottom">
+              <button id="start-video-btn" class="video-control-btn" title="Start Video Chat">📹 Start</button>
+              <button id="toggle-video-btn" class="video-control-btn" title="Toggle Video" style="display:none;">🔴</button>
+              <button id="toggle-audio-btn" class="video-control-btn" title="Toggle Audio" style="display:none;">🔊</button>
+              <button id="leave-video-btn" class="video-control-btn danger" title="Leave Video Chat" style="display:none;">❌</button>
             </div>
+            
+            <div id="video-status" class="video-status">Click Start to begin video chat</div>
           </div>
-          <div class="video-label">Opponent</div>
         </div>
       </div>
       
-      <div class="video-controls-bottom">
-        <button id="toggle-video-btn" class="video-control-btn" title="Toggle Video">🔴</button>
-        <button id="toggle-audio-btn" class="video-control-btn" title="Toggle Audio">🔊</button>
+      <div class="panel-section chat-section">
+        <h3>Chat</h3>
+        <div id="chat-container">
+          <div id="chat-messages"></div>
+          <form id="chat-form">
+            <input id="chat-input" type="text" placeholder="Type a message..." autocomplete="off" maxlength="200" />
+            <button type="submit">Send</button>
+          </form>
+        </div>
       </div>
-      
-      <div id="video-status" class="video-status">Video chat connecting...</div>
     </div>
   </div>
   
-  <div id="game-board" style="margin: 0 auto 24px auto; max-width: 400px;"></div>
-  <div id="move-history-container" style="max-width: 400px; margin: 0 auto 24px auto;">
-    <h3 style="color:#ffd700;">Move History</h3>
-    <ol id="move-history"></ol>
-  </div>
-  <div id="chat-container" style="max-width: 400px; margin: 0 auto;">
-    <div id="chat-messages" style="min-height: 48px; max-height: 120px; overflow-y: auto; font-size: 1em; margin-bottom: 8px; color: #fffbe6;"></div>
-    <form id="chat-form" style="display: flex; gap: 8px;">
-      <input id="chat-input" type="text" placeholder="Type a message..." autocomplete="off" maxlength="200" style="flex:1; padding:7px 10px; border-radius:6px; border:1px solid #ffd700; font-size:1em; background:#222; color:#ffd700;">
-      <button type="submit" style="padding:7px 18px; border-radius:6px; border:none; background:#a67c38; color:#fff; font-weight:bold; cursor:pointer;">Send</button>
-    </form>
-  </div>
   <script src="js/game.js"></script>
 </body>
 </html>
