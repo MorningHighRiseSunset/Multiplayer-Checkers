@@ -789,48 +789,87 @@ function makeAIMove() {
     return;
   }
 
-  // ONLY consider safe moves
-  const safeMoves = movesToConsider.filter(move => {
-    const isSafe = !canBeCapturedImmediately(move.to.row, move.to.col, board, myColor);
-    if (!isSafe) {
-      console.log('[AI] REJECTED unsafe move:', move);
-    }
-    return isSafe;
+  // Score each move for safety
+  const scoredMoves = movesToConsider.map(move => {
+    return {
+      move: move,
+      score: evaluateMoveSafety(move, board, myColor)
+    };
   });
 
-  // If no safe moves, pick the least dangerous one
-  const finalMoves = safeMoves.length > 0 ? safeMoves : movesToConsider;
+  // Sort by score (higher is safer)
+  scoredMoves.sort((a, b) => b.score - a.score);
 
-  // Pick random safe move (simple but effective)
-  const selectedMove = finalMoves[Math.floor(Math.random() * finalMoves.length)];
+  // Pick the safest move
+  const selectedMove = scoredMoves[0].move;
 
-  console.log('[game.js] AI selected move:', selectedMove, '(safe moves:', safeMoves.length, 'total:', finalMoves.length + ')');
+  console.log('[game.js] AI selected move:', selectedMove, 'with safety score:', scoredMoves[0].score);
 
   // Execute the move
   executeAIMove(selectedMove);
 }
 
-// Check if a position can be captured immediately
-function canBeCapturedImmediately(row, col, board, opponentColor) {
-  const opponentDirections = opponentColor === 'red' ? [[-1, -1], [-1, 1]] : [[1, -1], [1, 1]];
-  
-  for (const [dr, dc] of opponentDirections) {
-    const attackRow = row + dr;
-    const attackCol = col + dc;
-    const jumpRow = row + dr * 2;
-    const jumpCol = col + dc * 2;
-    
-    if (isValidPosition(attackRow, attackCol) && isValidPosition(jumpRow, jumpCol)) {
-      const attacker = board[attackRow][attackCol];
-      const landingSpot = board[jumpRow][jumpCol];
-      
-      if (attacker && attacker.color === opponentColor && !landingSpot) {
-        return true;
+// Evaluate move safety (higher score = safer)
+function evaluateMoveSafety(move, board, opponentColor) {
+  let score = 0;
+  const { from, to } = move;
+
+  // Calculate distance to nearest opponent piece
+  let minDistance = Infinity;
+  for (let row = 0; row < boardSize; row++) {
+    for (let col = 0; col < boardSize; col++) {
+      const piece = board[row][col];
+      if (piece && piece.color === opponentColor) {
+        const distance = Math.abs(row - to.row) + Math.abs(col - to.col);
+        if (distance < minDistance) {
+          minDistance = distance;
+        }
       }
     }
   }
-  
-  return false;
+
+  // Prefer moves that keep pieces away from opponents
+  score += minDistance * 10;
+
+  // Check if destination is diagonal from any opponent (highly dangerous)
+  const dangerScore = countDangerousDiagonals(to.row, to.col, board, opponentColor);
+  score -= dangerScore * 50; // Heavy penalty for dangerous positions
+
+  // Prefer moves that advance forward
+  if (aiColor === 'red') {
+    score += (from.row - to.row) * 5;
+  } else {
+    score += (to.row - from.row) * 5;
+  }
+
+  // If it's a jump, give it high priority
+  if (move.move.jump) {
+    score += 100;
+  }
+
+  return score;
+}
+
+// Count how many opponent pieces are diagonal to a position (danger level)
+function countDangerousDiagonals(row, col, board, opponentColor) {
+  let dangerCount = 0;
+  const diagonals = [
+    [-1, -1], [-1, 1], [1, -1], [1, 1]
+  ];
+
+  for (const [dr, dc] of diagonals) {
+    const checkRow = row + dr;
+    const checkCol = col + dc;
+    
+    if (isValidPosition(checkRow, checkCol)) {
+      const piece = board[checkRow][checkCol];
+      if (piece && piece.color === opponentColor) {
+        dangerCount++;
+      }
+    }
+  }
+
+  return dangerCount;
 }
 
 function isValidPosition(row, col) {
