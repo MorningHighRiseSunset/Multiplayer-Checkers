@@ -742,41 +742,99 @@ if (!startBoard) {
   initBoard();
 }
 
-// --- AI Logic - Using Checkers AI Library ---
+// --- AI Logic - Simple Defensive AI ---
 function makeAIMove() {
   if (!isAIMode || gameEnded || currentPlayer !== aiColor) {
     console.log('[game.js] AI move check failed:', { isAIMode, gameEnded, currentPlayer, aiColor });
     return;
   }
 
-  console.log('[game.js] AI making move using library');
+  console.log('[game.js] AI making move with defensive strategy');
 
-  // Convert board to library format
-  const libraryBoard = convertBoardToLibraryFormat(board);
-  
-  // AI is red (w in library), player is black (b in library)
-  const aiPlayer = aiColor === 'red' ? 'w' : 'b';
-  
-  // Get best move from library (depth 4 for speed)
-  const libraryMove = getBestMove(libraryBoard, aiPlayer, false, false, false, true, 4);
-  
-  if (!libraryMove) {
+  // Get all possible moves for AI
+  let allMoves = [];
+  let allJumps = [];
+
+  for (let row = 0; row < boardSize; row++) {
+    for (let col = 0; col < boardSize; col++) {
+      const piece = board[row][col];
+      if (piece && piece.color === aiColor) {
+        const moves = getValidMoves(row, col, false);
+        const jumps = getValidMoves(row, col, true);
+
+        moves.forEach(move => {
+          allMoves.push({
+            from: { row, col },
+            to: { row: move.row, col: move.col },
+            move: move
+          });
+        });
+
+        jumps.forEach(move => {
+          allJumps.push({
+            from: { row, col },
+            to: { row: move.row, col: move.col },
+            move: move
+          });
+        });
+      }
+    }
+  }
+
+  // Prefer jumps if available
+  const movesToConsider = allJumps.length > 0 ? allJumps : allMoves;
+
+  if (movesToConsider.length === 0) {
     console.log('[game.js] AI has no moves');
     return;
   }
 
-  // Convert library move back to our format
-  const ourMove = convertLibraryMoveToOurFormat(libraryMove, board);
+  // ONLY consider safe moves
+  const safeMoves = movesToConsider.filter(move => {
+    const isSafe = !canBeCapturedImmediately(move.to.row, move.to.col, board, myColor);
+    if (!isSafe) {
+      console.log('[AI] REJECTED unsafe move:', move);
+    }
+    return isSafe;
+  });
+
+  // If no safe moves, pick the least dangerous one
+  const finalMoves = safeMoves.length > 0 ? safeMoves : movesToConsider;
+
+  // Pick random safe move (simple but effective)
+  const selectedMove = finalMoves[Math.floor(Math.random() * finalMoves.length)];
+
+  console.log('[game.js] AI selected move:', selectedMove, '(safe moves:', safeMoves.length, 'total:', finalMoves.length + ')');
+
+  // Execute the move
+  executeAIMove(selectedMove);
+}
+
+// Check if a position can be captured immediately
+function canBeCapturedImmediately(row, col, board, opponentColor) {
+  const opponentDirections = opponentColor === 'red' ? [[-1, -1], [-1, 1]] : [[1, -1], [1, 1]];
   
-  if (!ourMove) {
-    console.log('[game.js] Failed to convert library move');
-    return;
+  for (const [dr, dc] of opponentDirections) {
+    const attackRow = row + dr;
+    const attackCol = col + dc;
+    const jumpRow = row + dr * 2;
+    const jumpCol = col + dc * 2;
+    
+    if (isValidPosition(attackRow, attackCol) && isValidPosition(jumpRow, jumpCol)) {
+      const attacker = board[attackRow][attackCol];
+      const landingSpot = board[jumpRow][jumpCol];
+      
+      if (attacker && attacker.color === opponentColor && !landingSpot) {
+        return true;
+      }
+    }
   }
+  
+  return false;
+}
 
-  console.log('[game.js] AI selected move:', ourMove);
-
-  // Execute the move directly for AI (skip animation for speed)
-  executeAIMove(ourMove);
+function isValidPosition(row, col) {
+  return row >= 0 && row < boardSize && col >= 0 && col < boardSize;
 }
 
 // Execute AI move directly without animation
