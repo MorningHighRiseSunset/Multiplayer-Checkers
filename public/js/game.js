@@ -808,10 +808,22 @@ function makeAIMove() {
 
 // Smart AI: Evaluate moves and choose the best one
 function getBestMove(moves, currentBoard, aiColor, playerColor) {
-  let bestMove = moves[0];
+  // First, filter out ANY moves that can be captured
+  const safeMoves = moves.filter(move => {
+    const isSafe = !canBeCapturedAt(move.to.row, move.to.col, currentBoard, playerColor);
+    if (!isSafe) {
+      console.log('[AI] REJECTED unsafe move:', move, '- can be captured');
+    }
+    return isSafe;
+  });
+
+  // If no safe moves exist, we have to play what we have
+  const movesToConsider = safeMoves.length > 0 ? safeMoves : moves;
+
+  let bestMove = movesToConsider[0];
   let bestScore = -Infinity;
 
-  for (const move of moves) {
+  for (const move of movesToConsider) {
     const score = evaluateMove(move, currentBoard, aiColor, playerColor);
     if (score > bestScore) {
       bestScore = score;
@@ -819,6 +831,7 @@ function getBestMove(moves, currentBoard, aiColor, playerColor) {
     }
   }
 
+  console.log('[AI] Selected best move from', movesToConsider.length, 'candidates');
   return bestMove;
 }
 
@@ -826,13 +839,6 @@ function getBestMove(moves, currentBoard, aiColor, playerColor) {
 function evaluateMove(move, board, aiColor, playerColor) {
   let score = 0;
   const { from, to, move: moveData } = move;
-
-  // HEAVILY penalize moves that result in immediate capture
-  if (canBeCapturedAt(to.row, to.col, board, playerColor)) {
-    score -= 200; // Massive penalty for suicidal moves
-    console.log('[AI] Move is suicidal - can be captured at destination');
-    return score; // Return immediately, this move is terrible
-  }
 
   // Prioritize jumps (capturing pieces)
   if (moveData.jumps && moveData.jumps.length > 0) {
@@ -955,19 +961,24 @@ function isValidPosition(row, col) {
 
 // Check if a piece at given position can be captured by opponent
 function canBeCapturedAt(row, col, board, opponentColor) {
-  const opponentDirections = opponentColor === 'red' ? [[-1, -1], [-1, 1]] : [[1, -1], [1, 1]];
+  // Check all diagonal directions where opponent could jump from
+  const attackDirections = [
+    [-1, -1], [-1, 1], [1, -1], [1, 1] // All 4 diagonal directions
+  ];
   
-  for (const [dr, dc] of opponentDirections) {
+  for (const [dr, dc] of attackDirections) {
     const attackRow = row + dr;
     const attackCol = col + dc;
-    const jumpRow = row - dr;
-    const jumpCol = col - dc;
+    const jumpRow = row + dr * 2;
+    const jumpCol = col + dc * 2;
     
     if (isValidPosition(attackRow, attackCol) && isValidPosition(jumpRow, jumpCol)) {
       const attacker = board[attackRow][attackCol];
       const landingSpot = board[jumpRow][jumpCol];
       
+      // Check if there's an opponent piece that can jump to capture
       if (attacker && attacker.color === opponentColor && !landingSpot) {
+        console.log('[AI] Position', row, col, 'can be captured from', attackRow, attackCol);
         return true; // This piece can be captured
       }
     }
