@@ -742,249 +742,76 @@ if (!startBoard) {
   initBoard();
 }
 
-// --- AI Logic ---
+// --- AI Logic - Using Checkers AI Library ---
 function makeAIMove() {
   if (!isAIMode || gameEnded || currentPlayer !== aiColor) {
     console.log('[game.js] AI move check failed:', { isAIMode, gameEnded, currentPlayer, aiColor });
     return;
   }
 
-  console.log('[game.js] AI making move');
+  console.log('[game.js] AI making move using library');
 
-  // Get all possible moves for AI
-  let allMoves = [];
-  let allJumps = [];
-
-  for (let row = 0; row < boardSize; row++) {
-    for (let col = 0; col < boardSize; col++) {
-      const piece = board[row][col];
-      if (piece && piece.color === aiColor) {
-        const moves = getValidMoves(row, col, false);
-        const jumps = getValidMoves(row, col, true);
-
-        moves.forEach(move => {
-          allMoves.push({
-            from: { row, col },
-            to: { row: move.row, col: move.col },
-            move: move
-          });
-        });
-
-        jumps.forEach(move => {
-          allJumps.push({
-            from: { row, col },
-            to: { row: move.row, col: move.col },
-            move: move
-          });
-        });
-      }
-    }
-  }
-
-  // Prefer jumps if available
-  const movesToConsider = allJumps.length > 0 ? allJumps : allMoves;
-
-  if (movesToConsider.length === 0) {
+  // Convert board to library format
+  const libraryBoard = convertBoardToLibraryFormat(board);
+  
+  // AI is red (w in library), player is black (b in library)
+  const aiPlayer = aiColor === 'red' ? 'w' : 'b';
+  
+  // Get best move from library (depth 4 for speed)
+  const libraryMove = getBestMove(libraryBoard, aiPlayer, false, false, false, true, 4);
+  
+  if (!libraryMove) {
     console.log('[game.js] AI has no moves');
     return;
   }
 
-  // Use smart AI instead of random move
-  const bestMove = getBestMove(movesToConsider, board, aiColor, myColor);
-
-  console.log('[game.js] AI selected move:', bestMove);
-
-  // Execute the move
-  lastMove = { from: bestMove.from, to: bestMove.to };
-  performMoveWithAnimation(bestMove.from, bestMove.to, bestMove.move, () => {
-    currentPlayer = 'black'; // Switch to player's turn
-    isMyTurn = true;
-    renderBoard();
-    highlightLastMove();
-    updateStatus();
-    checkGameOver();
-  });
-}
-
-// Smart AI: Evaluate moves and choose the best one
-function getBestMove(moves, currentBoard, aiColor, playerColor) {
-  // First, filter out ANY moves that can be captured
-  const safeMoves = moves.filter(move => {
-    const isSafe = !canBeCapturedAt(move.to.row, move.to.col, currentBoard, playerColor);
-    if (!isSafe) {
-      console.log('[AI] REJECTED unsafe move:', move, '- can be captured');
-    }
-    return isSafe;
-  });
-
-  // If no safe moves exist, we have to play what we have
-  const movesToConsider = safeMoves.length > 0 ? safeMoves : moves;
-
-  let bestMove = movesToConsider[0];
-  let bestScore = -Infinity;
-
-  for (const move of movesToConsider) {
-    const score = evaluateMove(move, currentBoard, aiColor, playerColor);
-    if (score > bestScore) {
-      bestScore = score;
-      bestMove = move;
-    }
-  }
-
-  console.log('[AI] Selected best move from', movesToConsider.length, 'candidates');
-  return bestMove;
-}
-
-// Evaluate a single move's strategic value
-function evaluateMove(move, board, aiColor, playerColor) {
-  let score = 0;
-  const { from, to, move: moveData } = move;
-
-  // Prioritize jumps (capturing pieces)
-  if (moveData.jumps && moveData.jumps.length > 0) {
-    score += 100 * moveData.jumps.length;
-  }
-
-  // Prefer getting kings
-  if (moveData.promotion) {
-    score += 50;
-  }
-
-  // Control the center (positions 3,4 in rows and cols)
-  const centerBonus = (3 - Math.abs(3 - to.row)) + (3 - Math.abs(3 - to.col));
-  score += centerBonus * 2;
-
-  // Avoid moving to edge positions (more vulnerable)
-  if (to.col === 0 || to.col === 7) {
-    score -= 5;
-  }
-
-  // Prefer advancing pieces (for non-kings)
-  const piece = board[from.row][from.col];
-  if (piece && !piece.king) {
-    if (aiColor === 'red') {
-      // Red moves "up" (decreasing row numbers)
-      score += (from.row - to.row) * 3;
-    } else {
-      // Black moves "down" (increasing row numbers)
-      score += (to.row - from.row) * 3;
-    }
-  }
-
-  // Keep back row pieces protected initially
-  if (from.row === 0 || from.row === 7) {
-    score -= 3;
-  }
-
-  // Add some randomness to make AI less predictable
-  score += Math.random() * 5;
-
-  return score;
-}
-
-// Evaluate how safe a position is from opponent attacks
-function evaluatePositionSafety(row, col, board, opponentColor) {
-  let safetyScore = 0;
-
-  // Check if this position can be immediately captured
-  const opponentMoves = getAdjacentOpponentMoves(row, col, board, opponentColor);
-  if (opponentMoves.length > 0) {
-    safetyScore -= 20 * opponentMoves.length; // Penalize dangerous positions
-  } else {
-    safetyScore += 10; // Reward safe positions
-  }
-
-  // Check if this position can attack opponent pieces
-  const attackMoves = getAttackMovesFromPosition(row, col, board, opponentColor);
-  if (attackMoves.length > 0) {
-    safetyScore += 15 * attackMoves.length; // Reward attacking positions
-  }
-
-  return safetyScore;
-}
-
-// Get opponent moves that could capture a piece at given position
-function getAdjacentOpponentMoves(row, col, board, opponentColor) {
-  const opponentMoves = [];
-  const directions = opponentColor === 'red' ? [[-1, -1], [-1, 1]] : [[1, -1], [1, 1]];
-
-  for (const [dr, dc] of directions) {
-    const attackRow = row + dr;
-    const attackCol = col + dc;
-
-    if (isValidPosition(attackRow, attackCol)) {
-      const piece = board[attackRow][attackCol];
-      if (piece && piece.color === opponentColor) {
-        // Check if this opponent piece can jump to our position
-        const jumpRow = row - dr;
-        const jumpCol = col - dc;
-        if (isValidPosition(jumpRow, jumpCol) && !board[jumpRow][jumpCol]) {
-          opponentMoves.push({ from: { row: attackRow, col: attackCol }, to: { row: jumpRow, col: jumpCol } });
-        }
-      }
-    }
-  }
-
-  return opponentMoves;
-}
-
-// Get attack moves from a given position
-function getAttackMovesFromPosition(row, col, board, opponentColor) {
-  const attackMoves = [];
-  const piece = board[row][col];
-  if (!piece) return attackMoves;
-
-  const directions = piece.king ? [[-1, -1], [-1, 1], [1, -1], [1, 1]] :
-    (piece.color === 'red' ? [[-1, -1], [-1, 1]] : [[1, -1], [1, 1]]);
-
-  for (const [dr, dc] of directions) {
-    const jumpRow = row + dr * 2;
-    const jumpCol = col + dc * 2;
-    const midRow = row + dr;
-    const midCol = col + dc;
-
-    if (isValidPosition(jumpRow, jumpCol) && isValidPosition(midRow, midCol)) {
-      const midPiece = board[midRow][midCol];
-      if (midPiece && midPiece.color === opponentColor && !board[jumpRow][jumpCol]) {
-        attackMoves.push({ from: { row, col }, to: { row: jumpRow, col: jumpCol } });
-      }
-    }
-  }
-
-  return attackMoves;
-}
-
-// Check if position is valid on the board
-function isValidPosition(row, col) {
-  return row >= 0 && row < boardSize && col >= 0 && col < boardSize;
-}
-
-// Check if a piece at given position can be captured by opponent
-function canBeCapturedAt(row, col, board, opponentColor) {
-  // Check all diagonal directions where opponent could jump from
-  const attackDirections = [
-    [-1, -1], [-1, 1], [1, -1], [1, 1] // All 4 diagonal directions
-  ];
+  // Convert library move back to our format
+  const ourMove = convertLibraryMoveToOurFormat(libraryMove, board);
   
-  for (const [dr, dc] of attackDirections) {
-    const attackRow = row + dr;
-    const attackCol = col + dc;
-    const jumpRow = row + dr * 2;
-    const jumpCol = col + dc * 2;
-    
-    if (isValidPosition(attackRow, attackCol) && isValidPosition(jumpRow, jumpCol)) {
-      const attacker = board[attackRow][attackCol];
-      const landingSpot = board[jumpRow][jumpCol];
-      
-      // Check if there's an opponent piece that can jump to capture
-      if (attacker && attacker.color === opponentColor && !landingSpot) {
-        console.log('[AI] Position', row, col, 'can be captured from', attackRow, attackCol);
-        return true; // This piece can be captured
-      }
+  if (!ourMove) {
+    console.log('[game.js] Failed to convert library move');
+    return;
+  }
+
+  console.log('[game.js] AI selected move:', ourMove);
+
+  // Execute the move directly for AI (skip animation for speed)
+  executeAIMove(ourMove);
+}
+
+// Execute AI move directly without animation
+function executeAIMove(move) {
+  const { from, to, jump, jumps, promotion } = move;
+  
+  // Move the piece
+  board[to.row][to.col] = board[from.row][from.col];
+  board[from.row][from.col] = null;
+  
+  // Handle jumps
+  if (jump && jumps && jumps.length > 0) {
+    for (const jumpPos of jumps) {
+      board[jumpPos.row][jumpPos.col] = null;
     }
   }
   
-  return false; // Safe from immediate capture
+  // Handle promotion
+  if (promotion) {
+    const piece = board[to.row][to.col];
+    if (piece) piece.king = true;
+  }
+  
+  // Update move history
+  moveHistory.push(move);
+  
+  // Switch turns
+  currentPlayer = 'black';
+  isMyTurn = true;
+  
+  // Update UI
+  renderBoard();
+  highlightLastMove();
+  updateStatus();
+  checkGameOver();
 }
 
 // --- Video Chat Functionality (PeerJS) ---
