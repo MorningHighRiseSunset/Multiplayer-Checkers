@@ -742,100 +742,94 @@ if (!startBoard) {
   initBoard();
 }
 
-// --- AI Logic - Ultra Simple: Capture or Safe Random ---
+// --- AI Logic - Working Checkers AI from GitHub ---
 function makeAIMove() {
   if (!isAIMode || gameEnded || currentPlayer !== aiColor) {
     console.log('[game.js] AI move check failed:', { isAIMode, gameEnded, currentPlayer, aiColor });
     return;
   }
 
-  console.log('[game.js] AI making move with simple capture-first logic');
+  console.log('[game.js] AI making move with working minimax AI');
 
-  // Get all possible moves for AI
-  let allMoves = [];
-  let allJumps = [];
-
-  for (let row = 0; row < boardSize; row++) {
-    for (let col = 0; col < boardSize; col++) {
-      const piece = board[row][col];
-      if (piece && piece.color === aiColor) {
-        const moves = getValidMoves(row, col, false);
-        const jumps = getValidMoves(row, col, true);
-
-        moves.forEach(move => {
-          allMoves.push({
-            from: { row, col },
-            to: { row: move.row, col: move.col },
-            move: move
-          });
-        });
-
-        jumps.forEach(move => {
-          allJumps.push({
-            from: { row, col },
-            to: { row: move.row, col: move.col },
-            move: move
-          });
-        });
-      }
-    }
-  }
-
-  // If there are captures, do a capture
-  if (allJumps.length > 0) {
-    const selectedMove = allJumps[Math.floor(Math.random() * allJumps.length)];
-    console.log('[game.js] AI capturing piece:', selectedMove);
-    executeAIMove(selectedMove);
+  // Convert our board to library format
+  const libraryBoard = convertOurBoardToLibraryFormat(board);
+  
+  // AI is red (white in library), player is black (black in library)
+  const machineColor = aiColor === 'red' ? 'white' : 'black';
+  
+  // Create AI player and get best move
+  const ai = new MachinePlayer('medium');
+  const libraryMove = ai.chooseBestMove(libraryBoard, machineColor);
+  
+  if (!libraryMove) {
+    console.log('[game.js] AI has no moves');
     return;
   }
 
-  // Otherwise, only pick moves that don't put piece in immediate danger
-  const safeMoves = allMoves.filter(move => {
-    return !isInImmediateDanger(move.to.row, move.to.col, board, myColor);
-  });
-
-  if (safeMoves.length === 0) {
-    console.log('[game.js] No safe moves, picking random');
-    const selectedMove = allMoves[Math.floor(Math.random() * allMoves.length)];
-    executeAIMove(selectedMove);
+  // Convert library move back to our format
+  const ourMove = convertLibraryMoveToOurFormat(libraryMove, board);
+  
+  if (!ourMove) {
+    console.log('[game.js] Failed to convert library move');
     return;
   }
 
-  const selectedMove = safeMoves[Math.floor(Math.random() * safeMoves.length)];
-  console.log('[game.js] AI picking safe random move:', selectedMove);
-  executeAIMove(selectedMove);
+  console.log('[game.js] AI selected move:', ourMove);
+
+  // Execute the move
+  executeAIMove(ourMove);
 }
 
-// Simple check: is piece in immediate danger (diagonal to opponent)?
-function isInImmediateDanger(row, col, board, opponentColor) {
-  const diagonals = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
-  
-  for (const [dr, dc] of diagonals) {
-    const checkRow = row + dr;
-    const checkCol = col + dc;
-    
-    if (checkRow >= 0 && checkRow < 8 && checkCol >= 0 && checkCol < 8) {
-      const piece = board[checkRow][checkCol];
-      if (piece && piece.color === opponentColor) {
-        return true; // Opponent is diagonal - can capture
+// Convert our board format to library format
+function convertOurBoardToLibraryFormat(board) {
+  const libraryBoard = [];
+  for (let row = 0; row < 8; row++) {
+    const rowArr = [];
+    for (let col = 0; col < 8; col++) {
+      const piece = board[row][col];
+      if (!piece) {
+        rowArr.push(null);
+      } else if (piece.color === 'red') {
+        rowArr.push({ color: 'white', isQueen: piece.king });
+      } else {
+        rowArr.push({ color: 'black', isQueen: piece.king });
       }
     }
+    libraryBoard.push(rowArr);
   }
+  return libraryBoard;
+}
+
+// Convert library move back to our format
+function convertLibraryMoveToOurFormat(libraryMove, board) {
+  if (!libraryMove) return null;
   
-  return false; // Safe
+  return {
+    from: { row: libraryMove.fromY, col: libraryMove.fromX },
+    to: { row: libraryMove.toY, col: libraryMove.toX },
+    jump: libraryMove.eatPositions && libraryMove.eatPositions.length > 0,
+    jumps: libraryMove.eatPositions ? libraryMove.eatPositions.map(pos => ({ row: pos.y, col: pos.x })) : [],
+    promotion: board[libraryMove.fromY][libraryMove.fromX] && 
+      ((board[libraryMove.fromY][libraryMove.fromX].color === 'red' && libraryMove.toY === 0) ||
+       (board[libraryMove.fromY][libraryMove.fromX].color === 'black' && libraryMove.toY === 7))
+  };
 }
 
 // Execute AI move directly without animation
 function executeAIMove(move) {
   const { from, to, jump, jumps, promotion } = move;
   
+  console.log('[AI] Executing move:', move);
+  
   // Move the piece
   board[to.row][to.col] = board[from.row][from.col];
   board[from.row][from.col] = null;
   
-  // Handle jumps
+  // Handle jumps - remove captured pieces
   if (jump && jumps && jumps.length > 0) {
+    console.log('[AI] Capturing pieces:', jumps);
     for (const jumpPos of jumps) {
+      console.log('[AI] Removing piece at:', jumpPos);
       board[jumpPos.row][jumpPos.col] = null;
     }
   }
@@ -843,7 +837,10 @@ function executeAIMove(move) {
   // Handle promotion
   if (promotion) {
     const piece = board[to.row][to.col];
-    if (piece) piece.king = true;
+    if (piece) {
+      piece.king = true;
+      console.log('[AI] Piece promoted to king');
+    }
   }
   
   // Update move history
