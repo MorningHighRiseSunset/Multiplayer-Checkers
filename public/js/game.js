@@ -742,14 +742,14 @@ if (!startBoard) {
   initBoard();
 }
 
-// --- AI Logic - Aggressive Capture AI ---
+// --- AI Logic - Ultra Simple: Capture or Safe Random ---
 function makeAIMove() {
   if (!isAIMode || gameEnded || currentPlayer !== aiColor) {
     console.log('[game.js] AI move check failed:', { isAIMode, gameEnded, currentPlayer, aiColor });
     return;
   }
 
-  console.log('[game.js] AI making move with aggressive capture strategy');
+  console.log('[game.js] AI making move with simple capture-first logic');
 
   // Get all possible moves for AI
   let allMoves = [];
@@ -781,132 +781,48 @@ function makeAIMove() {
     }
   }
 
-  // ALWAYS prioritize jumps (captures)
-  const movesToConsider = allJumps.length > 0 ? allJumps : allMoves;
-
-  if (movesToConsider.length === 0) {
-    console.log('[game.js] AI has no moves');
+  // If there are captures, do a capture
+  if (allJumps.length > 0) {
+    const selectedMove = allJumps[Math.floor(Math.random() * allJumps.length)];
+    console.log('[game.js] AI capturing piece:', selectedMove);
+    executeAIMove(selectedMove);
     return;
   }
 
-  // Score each move for aggressive play
-  const scoredMoves = movesToConsider.map(move => {
-    return {
-      move: move,
-      score: evaluateAggressiveMove(move, board, myColor)
-    };
+  // Otherwise, only pick moves that don't put piece in immediate danger
+  const safeMoves = allMoves.filter(move => {
+    return !isInImmediateDanger(move.to.row, move.to.col, board, myColor);
   });
 
-  // Sort by score (higher is better)
-  scoredMoves.sort((a, b) => b.score - a.score);
+  if (safeMoves.length === 0) {
+    console.log('[game.js] No safe moves, picking random');
+    const selectedMove = allMoves[Math.floor(Math.random() * allMoves.length)];
+    executeAIMove(selectedMove);
+    return;
+  }
 
-  // Pick the best move
-  const selectedMove = scoredMoves[0].move;
-
-  console.log('[game.js] AI selected move:', selectedMove, 'with score:', scoredMoves[0].score);
-
-  // Execute the move
+  const selectedMove = safeMoves[Math.floor(Math.random() * safeMoves.length)];
+  console.log('[game.js] AI picking safe random move:', selectedMove);
   executeAIMove(selectedMove);
 }
 
-// Evaluate move for aggressive play (higher score = better)
-function evaluateAggressiveMove(move, board, opponentColor) {
-  let score = 0;
-  const { from, to } = move;
-
-  // MASSIVE bonus for captures
-  if (move.move.jump) {
-    score += 500; // Very high priority for captures
-    console.log('[AI] CAPTURE MOVE - huge bonus');
-  }
-
-  // Check if this move can be immediately captured (only block suicidal moves)
-  if (canBeCapturedImmediately(to.row, to.col, board, opponentColor)) {
-    score -= 1000; // Massive penalty for suicidal moves
-    console.log('[AI] SUICIDAL MOVE - blocked');
-    return score; // Return immediately, this move is terrible
-  }
-
-  // Prefer moves that attack opponent pieces (get in attack position)
-  const attackPotential = countAttackPositions(to.row, to.col, board, opponentColor);
-  score += attackPotential * 30;
-
-  // Prefer advancing pieces
-  if (aiColor === 'red') {
-    score += (from.row - to.row) * 10;
-  } else {
-    score += (to.row - from.row) * 10;
-  }
-
-  // Prefer getting to promotion row
-  if ((aiColor === 'red' && to.row === 0) || (aiColor === 'black' && to.row === 7)) {
-    score += 100;
-  }
-
-  // Small penalty for moving to edge (unless for promotion)
-  if ((to.col === 0 || to.col === 7) && !(
-    (aiColor === 'red' && to.row === 0) || (aiColor === 'black' && to.row === 7)
-  )) {
-    score -= 10;
-  }
-
-  // Add some randomness to avoid being too predictable
-  score += Math.random() * 5;
-
-  return score;
-}
-
-// Count how many opponent pieces this position can attack
-function countAttackPositions(row, col, board, opponentColor) {
-  let attackCount = 0;
-  const directions = [
-    [-1, -1], [-1, 1], [1, -1], [1, 1]
-  ];
-
-  for (const [dr, dc] of directions) {
-    const jumpRow = row + dr * 2;
-    const jumpCol = col + dc * 2;
-    const midRow = row + dr;
-    const midCol = col + dc;
-
-    if (isValidPosition(jumpRow, jumpCol) && isValidPosition(midRow, midCol)) {
-      const midPiece = board[midRow][midCol];
-      const landingSpot = board[jumpRow][jumpCol];
-      
-      if (midPiece && midPiece.color === opponentColor && !landingSpot) {
-        attackCount++;
-      }
-    }
-  }
-
-  return attackCount;
-}
-
-// Check if a position can be captured immediately
-function canBeCapturedImmediately(row, col, board, opponentColor) {
-  const opponentDirections = opponentColor === 'red' ? [[-1, -1], [-1, 1]] : [[1, -1], [1, 1]];
+// Simple check: is piece in immediate danger (diagonal to opponent)?
+function isInImmediateDanger(row, col, board, opponentColor) {
+  const diagonals = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
   
-  for (const [dr, dc] of opponentDirections) {
-    const attackRow = row + dr;
-    const attackCol = col + dc;
-    const jumpRow = row + dr * 2;
-    const jumpCol = col + dc * 2;
+  for (const [dr, dc] of diagonals) {
+    const checkRow = row + dr;
+    const checkCol = col + dc;
     
-    if (isValidPosition(attackRow, attackCol) && isValidPosition(jumpRow, jumpCol)) {
-      const attacker = board[attackRow][attackCol];
-      const landingSpot = board[jumpRow][jumpCol];
-      
-      if (attacker && attacker.color === opponentColor && !landingSpot) {
-        return true;
+    if (checkRow >= 0 && checkRow < 8 && checkCol >= 0 && checkCol < 8) {
+      const piece = board[checkRow][checkCol];
+      if (piece && piece.color === opponentColor) {
+        return true; // Opponent is diagonal - can capture
       }
     }
   }
   
-  return false;
-}
-
-function isValidPosition(row, col) {
-  return row >= 0 && row < boardSize && col >= 0 && col < boardSize;
+  return false; // Safe
 }
 
 // Execute AI move directly without animation
