@@ -827,6 +827,13 @@ function evaluateMove(move, board, aiColor, playerColor) {
   let score = 0;
   const { from, to, move: moveData } = move;
 
+  // HEAVILY penalize moves that result in immediate capture
+  if (canBeCapturedAt(to.row, to.col, board, playerColor)) {
+    score -= 200; // Massive penalty for suicidal moves
+    console.log('[AI] Move is suicidal - can be captured at destination');
+    return score; // Return immediately, this move is terrible
+  }
+
   // Prioritize jumps (capturing pieces)
   if (moveData.jumps && moveData.jumps.length > 0) {
     score += 100 * moveData.jumps.length;
@@ -857,10 +864,6 @@ function evaluateMove(move, board, aiColor, playerColor) {
       score += (to.row - from.row) * 3;
     }
   }
-
-  // Evaluate safety of the destination
-  const destinationSafety = evaluatePositionSafety(to.row, to.col, board, playerColor);
-  score += destinationSafety;
 
   // Keep back row pieces protected initially
   if (from.row === 0 || from.row === 7) {
@@ -948,6 +951,29 @@ function getAttackMovesFromPosition(row, col, board, opponentColor) {
 // Check if position is valid on the board
 function isValidPosition(row, col) {
   return row >= 0 && row < boardSize && col >= 0 && col < boardSize;
+}
+
+// Check if a piece at given position can be captured by opponent
+function canBeCapturedAt(row, col, board, opponentColor) {
+  const opponentDirections = opponentColor === 'red' ? [[-1, -1], [-1, 1]] : [[1, -1], [1, 1]];
+  
+  for (const [dr, dc] of opponentDirections) {
+    const attackRow = row + dr;
+    const attackCol = col + dc;
+    const jumpRow = row - dr;
+    const jumpCol = col - dc;
+    
+    if (isValidPosition(attackRow, attackCol) && isValidPosition(jumpRow, jumpCol)) {
+      const attacker = board[attackRow][attackCol];
+      const landingSpot = board[jumpRow][jumpCol];
+      
+      if (attacker && attacker.color === opponentColor && !landingSpot) {
+        return true; // This piece can be captured
+      }
+    }
+  }
+  
+  return false; // Safe from immediate capture
 }
 
 // --- Video Chat Functionality (PeerJS) ---
