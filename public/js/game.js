@@ -215,46 +215,46 @@ function handleStartGame({ colorAssignments, firstTurn, board: serverBoard, move
 }
 
 // Handle sync board
-function handleSyncBoard({ board: serverBoard, currentPlayer: serverCurrent, moveHistory: serverHistory, lastMove: serverLastMove, color, role }) {
-  console.log('[game.js] handleSyncBoard event received');
+function handleSyncBoard({ board: serverBoard, currentPlayer: serverCurrent, moveHistory: serverHistory, lastMove: serverLastMove, color, role, from, to, move }) {
+  console.log('[game.js] handleSyncBoard event received:', { from, to, move });
 
-  // Animate opponent's move
-  if (serverLastMove) {
-    animateMove(serverLastMove.from, serverLastMove.to, () => {
-      if (serverCurrent) currentPlayer = serverCurrent;
-      if (serverHistory) moveHistory = [...serverHistory];
-      lastMove = serverLastMove;
-      selected = null;
-      validMoves = [];
-      gameStarted = true;
-      isMyTurn = (myColor === currentPlayer);
-      renderBoard();
-      renderMoveHistory();
-      highlightLastMove();
-      updateStatus();
-      checkGameOver();
-    });
-  } else {
-    if (serverCurrent) currentPlayer = serverCurrent;
-    if (serverHistory) moveHistory = [...serverHistory];
-    if (color) {
-      myColor = color;
-      sessionStorage.setItem('myAssignedColor', myColor);
+  // Apply opponent's move locally
+  if (from && to && move) {
+    const piece = board[from.row][from.col];
+    board[to.row][to.col] = piece;
+    board[from.row][from.col] = null;
+    if (move.jump && move.jumped) {
+      board[move.jumped.row][move.jumped.col] = null;
     }
-    if (role) {
-      myRole = role;
-      sessionStorage.setItem('myRole', myRole);
+    if (move.promotion) {
+      piece.king = true;
     }
-    selected = null;
-    validMoves = [];
-    gameStarted = true;
-    isMyTurn = (myColor === currentPlayer);
-    renderBoard();
-    renderMoveHistory();
-    highlightLastMove();
-    updateStatus();
-    checkGameOver();
+    moveHistory.push(
+      `${capitalize(currentPlayer)}: (${from.row},${from.col}) → (${to.row},${to.col})${move.jump ? ' (jump)' : ''}${move.promotion ? ' (king)' : ''}`
+    );
   }
+
+  if (serverCurrent) currentPlayer = serverCurrent;
+  if (serverHistory) moveHistory = [...serverHistory];
+  if (serverLastMove) lastMove = serverLastMove;
+  if (color) {
+    myColor = color;
+    sessionStorage.setItem('myAssignedColor', myColor);
+  }
+  if (role) {
+    myRole = role;
+    sessionStorage.setItem('myRole', myRole);
+  }
+
+  selected = null;
+  validMoves = [];
+  gameStarted = true;
+  isMyTurn = (myColor === currentPlayer);
+  renderBoard();
+  renderMoveHistory();
+  highlightLastMove();
+  updateStatus();
+  checkGameOver();
 }
 
 // --- Move history panel ---
@@ -627,24 +627,27 @@ function onSquareClick(e) {
 function sendMoveToServer(from, to, move) {
   console.log('[game.js] Sending move to server:', { from, to, move });
 
-  // Execute move locally first
-  const piece = board[from.row][from.col];
-  board[to.row][to.col] = piece;
-  board[from.row][from.col] = null;
-  let becameKing = false;
-  if ((piece.color === 'red' && to.row === 0) || (piece.color === 'black' && to.row === 7)) {
-    if (!piece.king) {
-      piece.king = true;
-      becameKing = true;
+  // In multiplayer mode, don't execute locally - wait for server sync
+  // In AI mode, execute locally first
+  if (isAIMode) {
+    const piece = board[from.row][from.col];
+    board[to.row][to.col] = piece;
+    board[from.row][from.col] = null;
+    let becameKing = false;
+    if ((piece.color === 'red' && to.row === 0) || (piece.color === 'black' && to.row === 7)) {
+      if (!piece.king) {
+        piece.king = true;
+        becameKing = true;
+      }
     }
+    if (move.jump) {
+      const { row: jr, col: jc } = move.jumped;
+      board[jr][jc] = null;
+    }
+    moveHistory.push(
+      `${capitalize(currentPlayer)}: (${from.row},${from.col}) → (${to.row},${to.col})${move.jump ? ' (jump)' : ''}${becameKing ? ' (king)' : ''}`
+    );
   }
-  if (move.jump) {
-    const { row: jr, col: jc } = move.jumped;
-    board[jr][jc] = null;
-  }
-  moveHistory.push(
-    `${capitalize(currentPlayer)}: (${from.row},${from.col}) → (${to.row},${to.col})${move.jump ? ' (jump)' : ''}${becameKing ? ' (king)' : ''}`
-  );
 
   // Send to server via Pusher
   const lastMove = { from, to };
@@ -656,7 +659,7 @@ function sendMoveToServer(from, to, move) {
     to,
     jump: move.jump,
     jumped: move.jump ? move.jumped : null,
-    promotion: becameKing
+    promotion: isAIMode ? (move.to.row === 0 || move.to.row === 7) : false
   };
 
   fetch(`${apiUrl}/move`, {
@@ -815,6 +818,10 @@ window.addEventListener('beforeunload', () => {
     body: JSON.stringify({ room: currentRoom || roomCode, socketId: mySocketId })
   });
 });
+
+function capitalize(str) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
 
 // --- Chat box logic ---
 if (chatForm && chatInput && chatMessages) {

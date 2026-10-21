@@ -74,10 +74,16 @@ module.exports = async (req, res) => {
 
     if (method === 'POST' && (path === '/move' || path === '/api/game/move')) {
       const { room, from, to, move, lastMove, currentPlayer, moveHistory } = body;
+      // Apply move on server board
+      const board = getInitialBoard();
+      // TODO: Need to track server board state - for now just sync the move data
       pusher.trigger(`game-${room}`, 'syncBoard', {
         currentPlayer,
         moveHistory,
-        lastMove
+        lastMove,
+        from,
+        to,
+        move
       });
       console.log('[pusher.js] move triggered for room:', room);
       return res.json({ success: true });
