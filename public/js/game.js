@@ -113,43 +113,27 @@ function initializeRoom() {
     }
   }
 
-  // Subscribe to Pusher presence channel
-  channel = pusher.subscribe(`presence-${currentRoom}`);
-  console.log('[game.js] Subscribed to Pusher channel:', `presence-${currentRoom}`);
+  // Subscribe to Pusher private channel (no auth needed)
+  channel = pusher.subscribe(`private-${currentRoom}`);
+  console.log('[game.js] Subscribed to Pusher channel:', `private-${currentRoom}`);
 
-  // Listen for player joined
-  channel.bind('pusher:subscription_succeeded', (members) => {
-    console.log('[game.js] Subscription succeeded. Members:', members.count);
+  // Listen for subscription succeeded
+  channel.bind('pusher:subscription_succeeded', () => {
+    console.log('[game.js] Subscription succeeded');
     mySocketId = pusher.connection.socket_id;
     console.log('[game.js] My socket ID:', mySocketId);
 
-    // Notify others that I joined
-    const myRole = members.count === 1 ? 'Player 1' : 'Player 2';
-    myRole = myRole;
-    console.log('[game.js] My role:', myRole);
-
-    // Notify other players
+    // Notify server that I joined
     fetch(`${apiUrl}/joined`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ room: currentRoom, role: myRole })
+      body: JSON.stringify({ room: currentRoom, socketId: mySocketId })
+    }).then(res => res.json()).then(data => {
+      console.log('[game.js] Joined response:', data);
+      if (data.playerCount === 2) {
+        statusDiv.textContent = 'Opponent joined - starting game...';
+      }
     });
-
-    // Auto-start if 2 players
-    if (members.count === 2) {
-      console.log('[game.js] 2 players in room, starting game...');
-      startGameOnServer();
-    }
-  });
-
-  // Listen for member added (second player joined)
-  channel.bind('pusher:member_added', (member) => {
-    console.log('[game.js] Member added:', member);
-    const members = channel.members;
-    if (members.count === 2) {
-      console.log('[game.js] 2 players in room, starting game...');
-      startGameOnServer();
-    }
   });
 
   // Listen for start game
@@ -187,53 +171,7 @@ function initializeRoom() {
   });
 }
 
-// Start game on server
-function startGameOnServer() {
-  const colorAssignments = {};
-  const roles = { [mySocketId]: myRole };
 
-  // Assign colors based on join order
-  const members = channel.members;
-  const memberIds = Object.keys(members.members);
-  colorAssignments[memberIds[0]] = 'red';
-  colorAssignments[memberIds[1]] = 'black';
-
-  const firstTurn = 'black';
-  const board = getInitialBoardForServer();
-  const moveHistory = [];
-
-  fetch(`${apiUrl}/start`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      room: currentRoom,
-      colorAssignments,
-      firstTurn,
-      board,
-      moveHistory,
-      roles
-    })
-  });
-}
-
-// Get initial board for server
-function getInitialBoardForServer() {
-  const board = [];
-  for (let row = 0; row < 8; row++) {
-    let rowArr = [];
-    for (let col = 0; col < 8; col++) {
-      if ((row + col) % 2 === 1) {
-        if (row < 3) rowArr.push({ color: 'black', king: false });
-        else if (row > 4) rowArr.push({ color: 'red', king: false });
-        else rowArr.push(null);
-      } else {
-        rowArr.push(null);
-      }
-    }
-    board.push(rowArr);
-  }
-  return board;
-}
 
 // Handle start game
 function handleStartGame({ colorAssignments, firstTurn, board: serverBoard, moveHistory: serverHistory, roles, lastMove: serverLastMove }) {
@@ -249,6 +187,11 @@ function handleStartGame({ colorAssignments, firstTurn, board: serverBoard, move
     myRole = roles[mySocketId];
     sessionStorage.setItem('myRole', myRole);
     console.log('[game.js] Assigned myRole from server:', myRole);
+  } else {
+    // Fallback if roles not provided
+    myRole = myColor === 'red' ? 'Player 1' : 'Player 2';
+    sessionStorage.setItem('myRole', myRole);
+    console.log('[game.js] Fallback myRole:', myRole);
   }
 
   currentPlayer = firstTurn || 'black';
@@ -351,7 +294,7 @@ leaveBtn.onclick = () => {
   fetch(`${apiUrl}/left`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ room: currentRoom || roomCode })
+    body: JSON.stringify({ room: currentRoom || roomCode, socketId: mySocketId })
   });
   window.location.href = '/';
 };
@@ -706,6 +649,15 @@ function sendMoveToServer(from, to, move) {
   const lastMove = { from, to };
   currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
 
+  // Convert move to server format
+  const serverMove = {
+    from,
+    to,
+    jump: move.jump,
+    jumped: move.jump ? move.jumped : null,
+    promotion: becameKing
+  };
+
   fetch(`${apiUrl}/move`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -713,7 +665,7 @@ function sendMoveToServer(from, to, move) {
       room: currentRoom || roomCode,
       from,
       to,
-      move,
+      move: serverMove,
       lastMove,
       currentPlayer,
       moveHistory
@@ -859,7 +811,7 @@ window.addEventListener('beforeunload', () => {
   fetch(`${apiUrl}/left`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ room: currentRoom || roomCode })
+    body: JSON.stringify({ room: currentRoom || roomCode, socketId: mySocketId })
   });
 });
 
