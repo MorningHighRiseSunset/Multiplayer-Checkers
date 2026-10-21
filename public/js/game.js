@@ -216,10 +216,12 @@ function handleStartGame({ colorAssignments, firstTurn, board: serverBoard, move
 
 // Handle sync board
 function handleSyncBoard({ board: serverBoard, currentPlayer: serverCurrent, moveHistory: serverHistory, lastMove: serverLastMove, color, role, from, to, move }) {
-  console.log('[game.js] handleSyncBoard event received:', { from, to, move });
+  console.log('[game.js] handleSyncBoard event received:', { from, to, move, serverCurrent });
 
-  // Apply opponent's move locally
-  if (from && to && move) {
+  // Only apply move if piece is still at "from" position (means we haven't applied it yet)
+  // If piece is already at "to" position, we already applied it locally, so skip
+  if (from && to && move && board[from.row][from.col] && !board[to.row][to.col]) {
+    console.log('[game.js] Applying opponent move');
     const piece = board[from.row][from.col];
     board[to.row][to.col] = piece;
     board[from.row][from.col] = null;
@@ -229,9 +231,6 @@ function handleSyncBoard({ board: serverBoard, currentPlayer: serverCurrent, mov
     if (move.promotion) {
       piece.king = true;
     }
-    moveHistory.push(
-      `${capitalize(currentPlayer)}: (${from.row},${from.col}) → (${to.row},${to.col})${move.jump ? ' (jump)' : ''}${move.promotion ? ' (king)' : ''}`
-    );
   }
 
   if (serverCurrent) currentPlayer = serverCurrent;
@@ -627,31 +626,28 @@ function onSquareClick(e) {
 function sendMoveToServer(from, to, move) {
   console.log('[game.js] Sending move to server:', { from, to, move });
 
-  // In multiplayer mode, don't execute locally - wait for server sync
-  // In AI mode, execute locally first
-  if (isAIMode) {
-    const piece = board[from.row][from.col];
-    board[to.row][to.col] = piece;
-    board[from.row][from.col] = null;
-    let becameKing = false;
-    if ((piece.color === 'red' && to.row === 0) || (piece.color === 'black' && to.row === 7)) {
-      if (!piece.king) {
-        piece.king = true;
-        becameKing = true;
-      }
+  // In multiplayer mode, apply move locally immediately for the player who made it
+  // Then wait for server sync to confirm
+  const piece = board[from.row][from.col];
+  board[to.row][to.col] = piece;
+  board[from.row][from.col] = null;
+  let becameKing = false;
+  if ((piece.color === 'red' && to.row === 0) || (piece.color === 'black' && to.row === 7)) {
+    if (!piece.king) {
+      piece.king = true;
+      becameKing = true;
     }
-    if (move.jump) {
-      const { row: jr, col: jc } = move.jumped;
-      board[jr][jc] = null;
-    }
-    moveHistory.push(
-      `${capitalize(currentPlayer)}: (${from.row},${from.col}) → (${to.row},${to.col})${move.jump ? ' (jump)' : ''}${becameKing ? ' (king)' : ''}`
-    );
   }
+  if (move.jump) {
+    const { row: jr, col: jc } = move.jumped;
+    board[jr][jc] = null;
+  }
+  moveHistory.push(
+    `${capitalize(currentPlayer)}: (${from.row},${from.col}) → (${to.row},${to.col})${move.jump ? ' (jump)' : ''}${becameKing ? ' (king)' : ''}`
+  );
 
   // Send to server via Pusher
   const lastMove = { from, to };
-  currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
 
   // Convert move to server format
   const serverMove = {
@@ -659,8 +655,14 @@ function sendMoveToServer(from, to, move) {
     to,
     jump: move.jump,
     jumped: move.jump ? move.jumped : null,
-    promotion: isAIMode ? (move.to.row === 0 || move.to.row === 7) : false
+    promotion: becameKing
   };
+
+  // In multiplayer, switch turns AFTER server sync, not before
+  // In AI mode, switch turns immediately
+  if (isAIMode) {
+    currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
+  }
 
   fetch(`${apiUrl}/move`, {
     method: 'POST',
@@ -671,13 +673,20 @@ function sendMoveToServer(from, to, move) {
       to,
       move: serverMove,
       lastMove,
-      currentPlayer,
+      currentPlayer: isAIMode ? currentPlayer : (currentPlayer === 'red' ? 'black' : 'red'),
       moveHistory
     })
   });
 
-  isMyTurn = false;
-  updateStatus();
+  // In multiplayer, don't mark turn as done until syncBoard
+  // In AI mode, mark immediately
+  if (isAIMode) {
+    isMyTurn = false;
+    updateStatus();
+  } else {
+    // Multiplayer: show "sending..." state
+    statusDiv.textContent = 'Sending move...';
+  }
 }
 
 function capitalize(str) {
