@@ -50,6 +50,17 @@ app.get("/health", (req, res) => {
   console.log('[server.js] Health check ping received at', new Date().toISOString());
 });
 
+// Self-ping every 5 minutes to keep server awake (for local development only)
+// For production (Render), use an external pinger service like UptimeRobot:
+// https://uptimerobot.com/ to ping https://multiplayer-checkers.onrender.com/health
+setInterval(() => {
+  const PORT = process.env.PORT || 3000;
+  fetch(`http://localhost:${PORT}/health`)
+    .then(res => res.json())
+    .then(data => console.log('[server.js] Self-ping successful:', data))
+    .catch(err => console.error('[server.js] Self-ping failed:', err));
+}, 300000); // 5 minutes
+
 process.on('uncaughtException', err => {
   console.error('Uncaught Exception:', err);
 });
