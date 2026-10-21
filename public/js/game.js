@@ -113,28 +113,31 @@ function initializeRoom() {
     }
   }
 
-  // Subscribe to Pusher public channel (no auth needed)
-  channel = pusher.subscribe(`game-${currentRoom}`);
-  console.log('[game.js] Subscribed to Pusher channel:', `game-${currentRoom}`);
+  // Only subscribe if not already subscribed
+  if (!channel) {
+    // Subscribe to Pusher public channel (no auth needed)
+    channel = pusher.subscribe(`game-${currentRoom}`);
+    console.log('[game.js] Subscribed to Pusher channel:', `game-${currentRoom}`);
 
-  // Listen for subscription succeeded
-  channel.bind('pusher:subscription_succeeded', () => {
-    console.log('[game.js] Subscription succeeded');
-    mySocketId = pusher.connection.socket_id;
-    console.log('[game.js] My socket ID:', mySocketId);
+    // Listen for subscription succeeded
+    channel.bind('pusher:subscription_succeeded', () => {
+      console.log('[game.js] Subscription succeeded');
+      mySocketId = pusher.connection.socket_id;
+      console.log('[game.js] My socket ID:', mySocketId);
 
-    // Notify server that I joined
-    fetch(`${apiUrl}/joined`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ room: currentRoom, socketId: mySocketId })
-    }).then(res => res.json()).then(data => {
-      console.log('[game.js] Joined response:', data);
-      if (data.playerCount === 2) {
-        statusDiv.textContent = 'Opponent joined - starting game...';
-      }
+      // Notify server that I joined
+      fetch(`${apiUrl}/joined`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room: currentRoom, socketId: mySocketId })
+      }).then(res => res.json()).then(data => {
+        console.log('[game.js] Joined response:', data);
+        if (data.playerCount === 2) {
+          statusDiv.textContent = 'Opponent joined - starting game...';
+        }
+      });
     });
-  });
+  }
 
   // Listen for start game
   channel.bind('startGame', (data) => {
@@ -322,9 +325,6 @@ const startFirstTurn = sessionStorage.getItem('startFirstTurn');
 pusher.connection.bind('connected', () => {
   mySocketId = pusher.connection.socket_id;
   console.log('[game.js] Pusher connected. socket.id:', mySocketId);
-
-  // Initialize room
-  initializeRoom();
 });
 
 // Handle connection errors
@@ -858,7 +858,9 @@ if (!startBoard) {
 }
 
 // Initialize Pusher room on page load
-initializeRoom();
+if (!startBoard) {
+  initializeRoom();
+}
 
 // --- AI Logic - Working Checkers AI from GitHub ---
 function makeAIMove() {

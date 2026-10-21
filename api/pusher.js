@@ -24,13 +24,16 @@ module.exports = async (req, res) => {
       if (!rooms[room]) {
         rooms[room] = { players: [] };
       }
-      rooms[room].players.push(socketId);
+      // Deduplicate socket IDs
+      if (!rooms[room].players.includes(socketId)) {
+        rooms[room].players.push(socketId);
+      }
       console.log('[pusher.js] Player joined room:', room, 'Player count:', rooms[room].players.length);
 
       // Notify other players
       pusher.trigger(`game-${room}`, 'playerJoined', { socketId, playerCount: rooms[room].players.length });
 
-      // Auto-start if 2 players
+      // Auto-start if exactly 2 unique players
       if (rooms[room].players.length === 2) {
         console.log('[pusher.js] 2 players in room, starting game...');
         const colorAssignments = {};
