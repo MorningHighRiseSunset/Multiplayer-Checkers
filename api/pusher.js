@@ -19,7 +19,7 @@ module.exports = async (req, res) => {
   console.log('[pusher.js] Request:', method, path);
 
   try {
-    if (method === 'POST' && path === '/joined') {
+    if (method === 'POST' && (path === '/joined' || path === '/api/game/joined')) {
       const { room, socketId } = body;
       if (!rooms[room]) {
         rooms[room] = { players: [] };
@@ -56,7 +56,7 @@ module.exports = async (req, res) => {
       return res.json({ success: true, playerCount: rooms[room].players.length });
     }
 
-    if (method === 'POST' && path === '/start') {
+    if (method === 'POST' && (path === '/start' || path === '/api/game/start')) {
       const { room, colorAssignments, firstTurn, board, moveHistory, roles } = body;
       pusher.trigger(`game-${room}`, 'startGame', {
         colorAssignments,
@@ -69,7 +69,7 @@ module.exports = async (req, res) => {
       return res.json({ success: true });
     }
 
-    if (method === 'POST' && path === '/move') {
+    if (method === 'POST' && (path === '/move' || path === '/api/game/move')) {
       const { room, from, to, move, lastMove, currentPlayer, moveHistory } = body;
       pusher.trigger(`game-${room}`, 'syncBoard', {
         currentPlayer,
@@ -80,7 +80,7 @@ module.exports = async (req, res) => {
       return res.json({ success: true });
     }
 
-    if (method === 'POST' && path === '/left') {
+    if (method === 'POST' && (path === '/left' || path === '/api/game/left')) {
       const { room, socketId } = body;
       if (rooms[room]) {
         rooms[room].players = rooms[room].players.filter(id => id !== socketId);
@@ -91,7 +91,7 @@ module.exports = async (req, res) => {
       return res.json({ success: true });
     }
 
-    if (method === 'POST' && path === '/chat') {
+    if (method === 'POST' && (path === '/chat' || path === '/api/game/chat')) {
       const { room, sender, msg } = body;
       pusher.trigger(`game-${room}`, 'chatMessage', { sender, msg });
       console.log('[pusher.js] chatMessage triggered for room:', room);
