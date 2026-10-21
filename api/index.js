@@ -54,6 +54,12 @@ app.get("/room.html", (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'room.html'));
 });
 
+// Health check endpoint to keep server awake
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  console.log('[server.js] Health check ping received at', new Date().toISOString());
+});
+
 process.on('uncaughtException', err => {
   console.error('Uncaught Exception:', err);
 });

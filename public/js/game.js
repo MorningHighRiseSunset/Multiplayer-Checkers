@@ -1,6 +1,13 @@
-const socket = io('https://multiplayer-checkers.onrender.com', {
+// Use current origin for socket connection (works for both local and production)
+const socketUrl = window.location.origin === 'http://localhost:3000'
+  ? 'http://localhost:3000'
+  : 'https://multiplayer-checkers.onrender.com';
+
+const socket = io(socketUrl, {
   transports: ['websocket', 'polling']
 });
+
+console.log('[game.js] Connecting to socket server:', socketUrl);
 
 const params = new URLSearchParams(window.location.search);
 const roomCode = params.get('room');
@@ -153,9 +160,21 @@ socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveH
 // Handle player joined
 socket.on('playerJoined', ({ role }) => {
   console.log('[game.js] playerJoined event received:', role);
+  console.log('[game.js] Current myRole:', myRole);
   statusDiv.textContent = `${role} joined - starting game...`;
   if (!myRole) {
     myRole = 'Player 1';
+    console.log('[game.js] Set myRole to Player 1 (was null)');
+  }
+});
+
+// Handle room state updates
+socket.on('roomState', (state) => {
+  console.log('[game.js] roomState event received:', state);
+  if (state.roles) {
+    const playerCount = Object.keys(state.roles).length;
+    console.log('[game.js] Players in room:', playerCount);
+    statusDiv.textContent = `Waiting for opponent... (${playerCount}/2 players)`;
   }
 });
 
@@ -228,6 +247,9 @@ socket.on('connect', () => {
   setTimeout(() => {
     initializeRoom();
   }, 100);
+
+  // Start health check pings to keep server awake (every 4 minutes)
+  startHealthCheckPings();
 });
 
 // Handle connection errors
@@ -240,6 +262,23 @@ socket.on('disconnect', () => {
   console.log('[game.js] Socket disconnected');
   statusDiv.textContent = 'Disconnected from server.';
 });
+
+// Health check pings to keep server awake
+let healthCheckInterval = null;
+function startHealthCheckPings() {
+  if (healthCheckInterval) clearInterval(healthCheckInterval);
+
+  // Ping the health endpoint every 4 minutes (240000ms)
+  healthCheckInterval = setInterval(() => {
+    const healthUrl = socketUrl + '/health';
+    fetch(healthUrl)
+      .then(res => res.json())
+      .then(data => console.log('[game.js] Health check successful:', data))
+      .catch(err => console.error('[game.js] Health check failed:', err));
+  }, 240000);
+
+  console.log('[game.js] Health check pings started (every 4 minutes)');
+}
 
 // --- Updated syncBoard to animate opponent's moves step-by-step ---
 socket.on('syncBoard', ({ board: serverBoard, currentPlayer: serverCurrent, moveHistory: serverHistory, lastMove: serverLastMove, color, role }) => {
