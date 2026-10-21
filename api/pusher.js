@@ -28,7 +28,7 @@ module.exports = async (req, res) => {
       console.log('[pusher.js] Player joined room:', room, 'Player count:', rooms[room].players.length);
 
       // Notify other players
-      pusher.trigger(`private-${room}`, 'playerJoined', { socketId, playerCount: rooms[room].players.length });
+      pusher.trigger(`game-${room}`, 'playerJoined', { socketId, playerCount: rooms[room].players.length });
 
       // Auto-start if 2 players
       if (rooms[room].players.length === 2) {
@@ -44,7 +44,7 @@ module.exports = async (req, res) => {
           [rooms[room].players[1]]: 'Player 2'
         };
 
-        pusher.trigger(`private-${room}`, 'startGame', {
+        pusher.trigger(`game-${room}`, 'startGame', {
           colorAssignments,
           firstTurn,
           board,
@@ -58,7 +58,7 @@ module.exports = async (req, res) => {
 
     if (method === 'POST' && path === '/start') {
       const { room, colorAssignments, firstTurn, board, moveHistory, roles } = body;
-      pusher.trigger(`private-${room}`, 'startGame', {
+      pusher.trigger(`game-${room}`, 'startGame', {
         colorAssignments,
         firstTurn,
         board,
@@ -71,7 +71,7 @@ module.exports = async (req, res) => {
 
     if (method === 'POST' && path === '/move') {
       const { room, from, to, move, lastMove, currentPlayer, moveHistory } = body;
-      pusher.trigger(`private-${room}`, 'syncBoard', {
+      pusher.trigger(`game-${room}`, 'syncBoard', {
         currentPlayer,
         moveHistory,
         lastMove
@@ -86,14 +86,14 @@ module.exports = async (req, res) => {
         rooms[room].players = rooms[room].players.filter(id => id !== socketId);
         console.log('[pusher.js] Player left room:', room, 'Player count:', rooms[room].players.length);
       }
-      pusher.trigger(`private-${room}`, 'opponentLeft', {});
+      pusher.trigger(`game-${room}`, 'opponentLeft', {});
       console.log('[pusher.js] opponentLeft triggered for room:', room);
       return res.json({ success: true });
     }
 
     if (method === 'POST' && path === '/chat') {
       const { room, sender, msg } = body;
-      pusher.trigger(`private-${room}`, 'chatMessage', { sender, msg });
+      pusher.trigger(`game-${room}`, 'chatMessage', { sender, msg });
       console.log('[pusher.js] chatMessage triggered for room:', room);
       return res.json({ success: true });
     }

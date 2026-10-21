@@ -113,9 +113,9 @@ function initializeRoom() {
     }
   }
 
-  // Subscribe to Pusher private channel (no auth needed)
-  channel = pusher.subscribe(`private-${currentRoom}`);
-  console.log('[game.js] Subscribed to Pusher channel:', `private-${currentRoom}`);
+  // Subscribe to Pusher public channel (no auth needed)
+  channel = pusher.subscribe(`game-${currentRoom}`);
+  console.log('[game.js] Subscribed to Pusher channel:', `game-${currentRoom}`);
 
   // Listen for subscription succeeded
   channel.bind('pusher:subscription_succeeded', () => {
