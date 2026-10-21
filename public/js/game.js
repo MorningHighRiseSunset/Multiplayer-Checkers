@@ -1,5 +1,9 @@
 const params = new URLSearchParams(window.location.search);
-const roomCode = params.get('room');
+const urlRoomCode = params.get('room');
+
+// Check if this is a page refresh (already had a room)
+const previousRoom = sessionStorage.getItem('currentRoom');
+const roomCode = previousRoom ? null : urlRoomCode; // If refresh, start fresh. If fresh load, use URL room.
 
 // Game state
 let myColor = null;
@@ -101,6 +105,7 @@ function initializeRoom() {
     // Create new room
     currentRoom = generateRoomCode();
     console.log('[game.js] Created new room:', currentRoom);
+    sessionStorage.setItem('currentRoom', currentRoom);
 
     // Update URL
     const url = new URL(window.location.href);
@@ -135,6 +140,8 @@ function initializeRoom() {
         if (data.playerCount === 2) {
           statusDiv.textContent = 'Opponent joined - starting game...';
         }
+      }).catch(err => {
+        console.error('[game.js] Join error:', err);
       });
     });
   }
