@@ -739,8 +739,8 @@ printBtn.onclick = () => {
 function updateStatus() {
   if (gameEnded) return;
   if (!gameStarted) {
-    statusDiv.textContent = "Waiting for opponent to join...";
-    console.log('[game.js] Status: Waiting for opponent to join...');
+    statusDiv.textContent = "Share the URL above with your opponent to start playing";
+    console.log('[game.js] Status: Share URL with opponent');
     return;
   }
   if (isAIMode) {
