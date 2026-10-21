@@ -87,27 +87,32 @@ function generateRoomCode() {
 
 // Initialize room on load
 function initializeRoom() {
+  console.log('[game.js] initializeRoom called. roomCode:', roomCode, 'socket connected:', socket.connected);
+
   if (roomCode) {
     // Join existing room
     currentRoom = roomCode;
+    console.log('[game.js] Emitting joinRoom for existing room:', currentRoom);
     socket.emit('joinRoom', currentRoom);
     console.log('[game.js] Joining existing room:', currentRoom);
   } else {
     // Create new room
     currentRoom = generateRoomCode();
+    console.log('[game.js] Emitting createRoom for new room:', currentRoom);
     socket.emit('createRoom', currentRoom);
+    console.log('[game.js] Emitting joinRoom for new room:', currentRoom);
     socket.emit('joinRoom', currentRoom);
-    
+
     // Update URL
     const url = new URL(window.location.href);
     url.searchParams.set('room', currentRoom);
     window.history.replaceState({}, '', url);
-    
+
     // Update join URL display
     if (joinUrlDiv) {
       joinUrlDiv.textContent = url.href;
     }
-    
+
     console.log('[game.js] Created new room:', currentRoom);
   }
 }
@@ -147,8 +152,11 @@ socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveH
 
 // Handle player joined
 socket.on('playerJoined', ({ role }) => {
-  console.log('[game.js] playerJoined:', role);
+  console.log('[game.js] playerJoined event received:', role);
   statusDiv.textContent = `${role} joined - starting game...`;
+  if (!myRole) {
+    myRole = 'Player 1';
+  }
 });
 
 // --- Move history panel ---
@@ -215,9 +223,22 @@ const startFirstTurn = sessionStorage.getItem('startFirstTurn');
 socket.on('connect', () => {
   mySocketId = socket.id;
   console.log('[game.js] Connected to server. socket.id:', mySocketId);
-  
-  // Initialize room
-  initializeRoom();
+
+  // Initialize room - do this in the next tick to ensure connection is fully established
+  setTimeout(() => {
+    initializeRoom();
+  }, 100);
+});
+
+// Handle connection errors
+socket.on('connect_error', (error) => {
+  console.error('[game.js] Socket connection error:', error);
+  statusDiv.textContent = 'Connection error. Please refresh the page.';
+});
+
+socket.on('disconnect', () => {
+  console.log('[game.js] Socket disconnected');
+  statusDiv.textContent = 'Disconnected from server.';
 });
 
 // --- Updated syncBoard to animate opponent's moves step-by-step ---

@@ -141,9 +141,11 @@ io.on('connection', (socket) => {
   });
 
   socket.on('joinRoom', (roomCode) => {
+    console.log('[server.js] joinRoom received from', socket.id, 'for room:', roomCode);
     currentRoom = roomCode;
     socket.join(roomCode, () => {
       // Callback runs after successfully joined the room
+      console.log('[server.js] Socket', socket.id, 'successfully joined room:', roomCode);
       if (!rooms[roomCode]) {
         rooms[roomCode] = {
           players: {},
@@ -167,10 +169,12 @@ io.on('connection', (socket) => {
       myRole = roleCount === 0 ? 'Player 1' : 'Player 2';
       rooms[roomCode].roles[socket.id] = myRole;
       rooms[roomCode].players[socket.id] = null;
+      console.log('[server.js] Assigned role', myRole, 'to socket', socket.id, 'in room', roomCode);
+      console.log('[server.js] Room', roomCode, 'now has', Object.keys(rooms[roomCode].roles).length, 'players');
       broadcastRoomState(roomCode);
       socket.to(roomCode).emit('playerJoined', { role: myRole });
       console.log('[server.js] joinRoom:', socket.id, 'as', myRole, 'in', roomCode);
-      
+
       // Auto-start game if 2 players
       maybeStartGame(roomCode);
     });
