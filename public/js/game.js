@@ -159,6 +159,10 @@ function initializeRoom() {
     console.log('[game.js] playerJoined event received:', data);
     if (data.playerCount === 2) {
       statusDiv.textContent = 'Opponent joined - starting game...';
+      // Start game locally since server stateless may lose track
+      if (!gameStarted && !myColor) {
+        startGameLocally();
+      }
     } else {
       statusDiv.textContent = `You are in the room (${data.playerCount}/2 players). Send URL to opponent.`;
     }
@@ -813,6 +817,24 @@ function updateStatus() {
       console.log('[game.js] Status: Opponent\'s turn', currentPlayer);
     }
   }
+}
+
+// Start game locally (used when server stateless loses track)
+function startGameLocally() {
+  console.log('[game.js] Starting game locally');
+  const isFirstPlayer = myRole === 'Player 1';
+  myColor = isFirstPlayer ? 'black' : 'red';
+  sessionStorage.setItem('myAssignedColor', myColor);
+  currentPlayer = 'black';
+  initBoard();
+  moveHistory = [];
+  gameStarted = true;
+  isMyTurn = (myColor === currentPlayer);
+  selected = null;
+  validMoves = [];
+  renderBoard();
+  renderMoveHistory();
+  updateStatus();
 }
 
 // Leave game if window/tab closed
