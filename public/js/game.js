@@ -222,20 +222,9 @@ function handleStartGame({ colorAssignments, firstTurn, board: serverBoard, move
 function handleSyncBoard({ board: serverBoard, currentPlayer: serverCurrent, moveHistory: serverHistory, lastMove: serverLastMove, color, role, from, to, move }) {
   console.log('[game.js] handleSyncBoard event received:', { from, to, move, serverCurrent });
 
-  // Apply the move from server (server is source of truth)
-  if (from && to && move) {
-    console.log('[game.js] Applying move from server');
-    const piece = board[from.row][from.col];
-    if (piece) {
-      board[to.row][to.col] = piece;
-      board[from.row][from.col] = null;
-      if (move.jump && move.jumped) {
-        board[move.jumped.row][move.jumped.col] = null;
-      }
-      if (move.promotion) {
-        piece.king = true;
-      }
-    }
+  // Use server board as source of truth
+  if (serverBoard) {
+    board = serverBoard;
   }
 
   if (serverCurrent) currentPlayer = serverCurrent;
@@ -631,27 +620,32 @@ function onSquareClick(e) {
 function sendMoveToServer(from, to, move) {
   console.log('[game.js] Sending move to server:', { from, to, move });
 
-  // In multiplayer mode, apply move locally immediately for the player who made it
-  // Then wait for server sync to confirm
-  const piece = board[from.row][from.col];
-  board[to.row][to.col] = piece;
-  board[from.row][from.col] = null;
-  let becameKing = false;
-  if ((piece.color === 'red' && to.row === 0) || (piece.color === 'black' && to.row === 7)) {
-    if (!piece.king) {
-      piece.king = true;
-      becameKing = true;
+  // In AI mode, apply move locally immediately (no server sync)
+  if (isAIMode) {
+    const piece = board[from.row][from.col];
+    board[to.row][to.col] = piece;
+    board[from.row][from.col] = null;
+    let becameKing = false;
+    if ((piece.color === 'red' && to.row === 0) || (piece.color === 'black' && to.row === 7)) {
+      if (!piece.king) {
+        piece.king = true;
+        becameKing = true;
+      }
     }
+    if (move.jump) {
+      const { row: jr, col: jc } = move.jumped;
+      board[jr][jc] = null;
+    }
+    moveHistory.push(
+      `${capitalize(currentPlayer)}: (${from.row},${from.col}) → (${to.row},${to.col})${move.jump ? ' (jump)' : ''}${becameKing ? ' (king)' : ''}`
+    );
+    currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
+    isMyTurn = false;
+    updateStatus();
+    return;
   }
-  if (move.jump) {
-    const { row: jr, col: jc } = move.jumped;
-    board[jr][jc] = null;
-  }
-  moveHistory.push(
-    `${capitalize(currentPlayer)}: (${from.row},${from.col}) → (${to.row},${to.col})${move.jump ? ' (jump)' : ''}${becameKing ? ' (king)' : ''}`
-  );
 
-  // Send to server via Pusher
+  // In multiplayer mode, send to server - server is source of truth
   const lastMove = { from, to };
 
   // Convert move to server format
@@ -660,14 +654,10 @@ function sendMoveToServer(from, to, move) {
     to,
     jump: move.jump,
     jumped: move.jump ? move.jumped : null,
-    promotion: becameKing
+    promotion: false // Server will determine promotion
   };
 
-  // In multiplayer, switch turns AFTER server sync, not before
-  // In AI mode, switch turns immediately
-  if (isAIMode) {
-    currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
-  }
+  const nextPlayer = currentPlayer === 'red' ? 'black' : 'red';
 
   fetch(`${apiUrl}/move`, {
     method: 'POST',
@@ -678,20 +668,13 @@ function sendMoveToServer(from, to, move) {
       to,
       move: serverMove,
       lastMove,
-      currentPlayer: isAIMode ? currentPlayer : (currentPlayer === 'red' ? 'black' : 'red'),
+      currentPlayer: nextPlayer,
       moveHistory
     })
   });
 
-  // In multiplayer, don't mark turn as done until syncBoard
-  // In AI mode, mark immediately
-  if (isAIMode) {
-    isMyTurn = false;
-    updateStatus();
-  } else {
-    // Multiplayer: show "sending..." state
-    statusDiv.textContent = 'Sending move...';
-  }
+  // Show "sending..." state, will update when syncBoard arrives
+  statusDiv.textContent = 'Sending move...';
 }
 
 function capitalize(str) {

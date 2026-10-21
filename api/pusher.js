@@ -47,6 +47,13 @@ module.exports = async (req, res) => {
           [rooms[room].players[1]]: 'Player 2'
         };
 
+        // Store game state in room
+        rooms[room].board = board;
+        rooms[room].currentPlayer = firstTurn;
+        rooms[room].moveHistory = moveHistory;
+        rooms[room].colorAssignments = colorAssignments;
+        rooms[room].roles = roles;
+
         pusher.trigger(`game-${room}`, 'startGame', {
           colorAssignments,
           firstTurn,
@@ -75,9 +82,30 @@ module.exports = async (req, res) => {
     if (method === 'POST' && (path === '/move' || path === '/api/game/move')) {
       const { room, from, to, move, lastMove, currentPlayer, moveHistory } = body;
       // Apply move on server board
-      const board = getInitialBoard();
-      // TODO: Need to track server board state - for now just sync the move data
+      if (!rooms[room] || !rooms[room].board) {
+        console.log('[pusher.js] Room or board not found, creating new board');
+        rooms[room] = rooms[room] || {};
+        rooms[room].board = getInitialBoard();
+      }
+
+      const board = rooms[room].board;
+      const piece = board[from.row][from.col];
+      board[to.row][to.col] = piece;
+      board[from.row][from.col] = null;
+      if (move.jump && move.jumped) {
+        board[move.jumped.row][move.jumped.col] = null;
+      }
+      if (move.promotion) {
+        piece.king = true;
+      }
+
+      // Update room state
+      rooms[room].currentPlayer = currentPlayer;
+      rooms[room].moveHistory = moveHistory;
+      rooms[room].lastMove = lastMove;
+
       pusher.trigger(`game-${room}`, 'syncBoard', {
+        board,
         currentPlayer,
         moveHistory,
         lastMove,
