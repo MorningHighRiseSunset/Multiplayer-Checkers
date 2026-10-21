@@ -137,6 +137,17 @@ function initializeRoom() {
 
     // Auto-start if 2 players
     if (members.count === 2) {
+      console.log('[game.js] 2 players in room, starting game...');
+      startGameOnServer();
+    }
+  });
+
+  // Listen for member added (second player joined)
+  channel.bind('pusher:member_added', (member) => {
+    console.log('[game.js] Member added:', member);
+    const members = channel.members;
+    if (members.count === 2) {
+      console.log('[game.js] 2 players in room, starting game...');
       startGameOnServer();
     }
   });
