@@ -214,10 +214,10 @@ function handleStartGame({ colorAssignments, firstTurn, board: serverBoard, move
 // Handle sync board
 function handleSyncBoard({ board: serverBoard, currentPlayer: serverCurrent, moveHistory: serverHistory, lastMove: serverLastMove, color, role }) {
   console.log('[game.js] handleSyncBoard event received');
-  const isOpponentMove = (myColor !== currentPlayer);
-  if (serverLastMove && isOpponentMove) {
+
+  // Animate opponent's move
+  if (serverLastMove) {
     animateMove(serverLastMove.from, serverLastMove.to, () => {
-      if (serverBoard) board = JSON.parse(JSON.stringify(serverBoard));
       if (serverCurrent) currentPlayer = serverCurrent;
       if (serverHistory) moveHistory = [...serverHistory];
       lastMove = serverLastMove;
@@ -232,11 +232,8 @@ function handleSyncBoard({ board: serverBoard, currentPlayer: serverCurrent, mov
       checkGameOver();
     });
   } else {
-    if (serverBoard) board = JSON.parse(JSON.stringify(serverBoard));
     if (serverCurrent) currentPlayer = serverCurrent;
     if (serverHistory) moveHistory = [...serverHistory];
-    if (serverLastMove) lastMove = serverLastMove;
-    else lastMove = null;
     if (color) {
       myColor = color;
       sessionStorage.setItem('myAssignedColor', myColor);

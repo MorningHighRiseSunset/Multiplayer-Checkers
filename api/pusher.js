@@ -72,12 +72,9 @@ module.exports = async (req, res) => {
     if (method === 'POST' && path === '/move') {
       const { room, from, to, move, lastMove, currentPlayer, moveHistory } = body;
       pusher.trigger(`private-${room}`, 'syncBoard', {
-        from,
-        to,
-        move,
-        lastMove,
         currentPlayer,
-        moveHistory
+        moveHistory,
+        lastMove
       });
       console.log('[pusher.js] move triggered for room:', room);
       return res.json({ success: true });
