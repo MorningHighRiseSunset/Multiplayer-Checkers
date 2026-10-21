@@ -770,6 +770,18 @@ window.addEventListener('beforeunload', () => {
 
 // --- Chat box logic ---
 if (chatForm && chatInput && chatMessages) {
+  // Add feedback message on page load
+  const feedbackDiv = document.createElement('div');
+  feedbackDiv.style.padding = '8px';
+  feedbackDiv.style.background = '#2a2a2a';
+  feedbackDiv.style.borderRadius = '4px';
+  feedbackDiv.style.marginBottom = '8px';
+  feedbackDiv.style.fontSize = '0.9em';
+  feedbackDiv.style.color = '#ffffff';
+  feedbackDiv.style.border = '1px solid #444';
+  feedbackDiv.innerHTML = 'Please send comments/feedback to: <a href="mailto:maurice13stu@gmail.com" style="color: #66b3ff; text-decoration: underline;">maurice13stu@gmail.com</a>';
+  chatMessages.appendChild(feedbackDiv);
+
   chatForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const msg = chatInput.value.trim();
