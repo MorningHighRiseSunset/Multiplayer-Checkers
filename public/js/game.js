@@ -151,7 +151,7 @@ function initializeRoom() {
     if (data.playerCount === 2) {
       statusDiv.textContent = 'Opponent joined - starting game...';
     } else {
-      statusDiv.textContent = `Opponent joined! (${data.playerCount}/2 players)`;
+      statusDiv.textContent = `You are in the room (${data.playerCount}/2 players). Send URL to opponent.`;
     }
     if (!myRole) {
       myRole = 'Player 1';
@@ -222,18 +222,19 @@ function handleStartGame({ colorAssignments, firstTurn, board: serverBoard, move
 function handleSyncBoard({ board: serverBoard, currentPlayer: serverCurrent, moveHistory: serverHistory, lastMove: serverLastMove, color, role, from, to, move }) {
   console.log('[game.js] handleSyncBoard event received:', { from, to, move, serverCurrent });
 
-  // Only apply move if piece is still at "from" position (means we haven't applied it yet)
-  // If piece is already at "to" position, we already applied it locally, so skip
-  if (from && to && move && board[from.row][from.col] && !board[to.row][to.col]) {
-    console.log('[game.js] Applying opponent move');
+  // Apply the move from server (server is source of truth)
+  if (from && to && move) {
+    console.log('[game.js] Applying move from server');
     const piece = board[from.row][from.col];
-    board[to.row][to.col] = piece;
-    board[from.row][from.col] = null;
-    if (move.jump && move.jumped) {
-      board[move.jumped.row][move.jumped.col] = null;
-    }
-    if (move.promotion) {
-      piece.king = true;
+    if (piece) {
+      board[to.row][to.col] = piece;
+      board[from.row][from.col] = null;
+      if (move.jump && move.jumped) {
+        board[move.jumped.row][move.jumped.col] = null;
+      }
+      if (move.promotion) {
+        piece.king = true;
+      }
     }
   }
 
