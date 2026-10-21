@@ -1,9 +1,5 @@
 const params = new URLSearchParams(window.location.search);
-const urlRoomCode = params.get('room');
-
-// Check if this is a page refresh (already had a room)
-const previousRoom = sessionStorage.getItem('currentRoom');
-const roomCode = previousRoom ? null : urlRoomCode; // If refresh, start fresh. If fresh load, use URL room.
+const roomCode = params.get('room');
 
 // Game state
 let myColor = null;
@@ -21,7 +17,14 @@ console.log('[game.js] Loaded. roomCode:', roomCode);
 // --- Join URL and AI button logic ---
 const joinUrlDiv = document.getElementById('join-url');
 const copyUrlBtn = document.getElementById('copy-url-btn');
+const newGameBtn = document.getElementById('new-game-btn');
 const playAiBtn = document.getElementById('play-ai-btn');
+
+// New Game button - generate new room and reload
+newGameBtn.addEventListener('click', () => {
+  const newRoom = generateRoomCode();
+  window.location.href = `game.html?room=${newRoom}`;
+});
 
 // Display the join URL
 if (joinUrlDiv) {
@@ -105,7 +108,6 @@ function initializeRoom() {
     // Create new room
     currentRoom = generateRoomCode();
     console.log('[game.js] Created new room:', currentRoom);
-    sessionStorage.setItem('currentRoom', currentRoom);
 
     // Update URL
     const url = new URL(window.location.href);
@@ -149,6 +151,8 @@ function initializeRoom() {
   // Listen for start game
   channel.bind('startGame', (data) => {
     console.log('[game.js] startGame event received:', data);
+    // Unsubscribe first to prevent duplicate handlers
+    channel.unbind('startGame');
     handleStartGame(data);
   });
 
