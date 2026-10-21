@@ -145,7 +145,7 @@ function initializeRoom() {
   // Listen for player joined
   channel.bind('playerJoined', (data) => {
     console.log('[game.js] playerJoined event received:', data);
-    statusDiv.textContent = `${data.role} joined - starting game...`;
+    statusDiv.textContent = `Opponent joined! (${data.playerCount}/2 players)`;
     if (!myRole) {
       myRole = 'Player 1';
     }

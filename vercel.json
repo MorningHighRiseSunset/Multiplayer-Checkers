@@ -2,8 +2,8 @@
   "name": "multiplayer-checkers",
   "rewrites": [
     {
-      "source": "/api/game/:path*",
-      "destination": "/api/pusher.js/:path*"
+      "source": "/api/game/(.*)",
+      "destination": "/api/pusher.js"
     }
   ]
 }
