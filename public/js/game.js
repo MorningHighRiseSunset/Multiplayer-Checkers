@@ -130,33 +130,45 @@ function initializeRoom() {
       mySocketId = pusher.connection.socket_id;
       console.log('[game.js] My socket ID:', mySocketId);
 
-      // Notify server that I joined
-      fetch(`${apiUrl}/joined`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ room: currentRoom, socketId: mySocketId })
-      }).then(res => res.json()).then(data => {
-        console.log('[game.js] Joined response:', data);
-        if (data.color) {
-          myColor = data.color;
-          sessionStorage.setItem('myAssignedColor', myColor);
-        }
-        if (data.role) {
-          myRole = data.role;
-          sessionStorage.setItem('myRole', myRole);
-        }
-        if (data.playerCount === 2) {
-          statusDiv.textContent = 'Opponent joined - starting game...';
-          // Start game locally if not already started
-          setTimeout(() => {
-            if (!gameStarted) {
-              startGameLocally();
+      // Notify server that I joined (with retry for cold starts)
+      const joinWithRetry = async (retries = 3) => {
+        for (let i = 0; i < retries; i++) {
+          try {
+            const res = await fetch(`${apiUrl}/joined`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ room: currentRoom, socketId: mySocketId })
+            });
+            const data = await res.json();
+            console.log('[game.js] Joined response:', data);
+            if (data.color) {
+              myColor = data.color;
+              sessionStorage.setItem('myAssignedColor', myColor);
             }
-          }, 500);
+            if (data.role) {
+              myRole = data.role;
+              sessionStorage.setItem('myRole', myRole);
+            }
+            if (data.playerCount === 2) {
+              statusDiv.textContent = 'Opponent joined - starting game...';
+              // Start game locally if not already started
+              setTimeout(() => {
+                if (!gameStarted) {
+                  startGameLocally();
+                }
+              }, 500);
+            }
+            return;
+          } catch (err) {
+            console.error('[game.js] Join error attempt', i + 1, ':', err);
+            if (i < retries - 1) {
+              await new Promise(r => setTimeout(r, 1000));
+            }
+          }
         }
-      }).catch(err => {
-        console.error('[game.js] Join error:', err);
-      });
+        console.error('[game.js] Failed to join after retries');
+      };
+      joinWithRetry();
     });
   }
 
