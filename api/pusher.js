@@ -61,9 +61,22 @@ module.exports = async (req, res) => {
           moveHistory,
           roles
         });
+
+        // Also return the color assignment in the join response
+        return res.json({
+          success: true,
+          playerCount: rooms[room].players.length,
+          color: colorAssignments[socketId],
+          role: roles[socketId]
+        });
       }
 
-      return res.json({ success: true, playerCount: rooms[room].players.length });
+      return res.json({
+        success: true,
+        playerCount: rooms[room].players.length,
+        color: rooms[room].colorAssignments ? rooms[room].colorAssignments[socketId] : null,
+        role: rooms[room].roles ? rooms[room].roles[socketId] : null
+      });
     }
 
     if (method === 'POST' && (path === '/start' || path === '/api/game/start')) {
