@@ -50,8 +50,8 @@ if (playAiBtn) {
 
 // API URL for Pusher events
 const apiUrl = window.location.origin === 'http://localhost:3000'
-  ? 'http://localhost:3001'
-  : 'https://multiplayer-checkers.onrender.com';
+  ? 'http://localhost:3001/api/game'
+  : '/api/game';
 
 console.log('[game.js] API URL:', apiUrl);
 
@@ -129,7 +129,7 @@ function initializeRoom() {
     console.log('[game.js] My role:', myRole);
 
     // Notify other players
-    fetch(`${apiUrl}/api/game/joined`, {
+    fetch(`${apiUrl}/joined`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ room: currentRoom, role: myRole })
@@ -202,7 +202,7 @@ function startGameOnServer() {
   const board = getInitialBoardForServer();
   const moveHistory = [];
 
-  fetch(`${apiUrl}/api/game/start`, {
+  fetch(`${apiUrl}/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -348,7 +348,7 @@ if (!leaveBtn) {
 
 leaveBtn.onclick = () => {
   console.log('[game.js] Leave Game clicked');
-  fetch(`${apiUrl}/api/game/left`, {
+  fetch(`${apiUrl}/left`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ room: currentRoom || roomCode })
@@ -706,7 +706,7 @@ function sendMoveToServer(from, to, move) {
   const lastMove = { from, to };
   currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
 
-  fetch(`${apiUrl}/api/game/move`, {
+  fetch(`${apiUrl}/move`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -856,7 +856,7 @@ function updateStatus() {
 // Leave game if window/tab closed
 window.addEventListener('beforeunload', () => {
   console.log('[game.js] beforeunload: leaving game');
-  fetch(`${apiUrl}/api/game/left`, {
+  fetch(`${apiUrl}/left`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ room: currentRoom || roomCode })
@@ -884,7 +884,7 @@ if (chatForm && chatInput && chatMessages) {
       // Use myRole if available, else fallback to "You"
       const senderLabel = myRole ? myRole : "You";
       appendChatMessage(senderLabel, msg);
-      fetch(`${apiUrl}/api/game/chat`, {
+      fetch(`${apiUrl}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ room: currentRoom || roomCode, sender: senderLabel, msg })
