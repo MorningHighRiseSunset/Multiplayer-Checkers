@@ -139,6 +139,12 @@ function initializeRoom() {
         console.log('[game.js] Joined response:', data);
         if (data.playerCount === 2) {
           statusDiv.textContent = 'Opponent joined - starting game...';
+          // Start game locally if not already started
+          setTimeout(() => {
+            if (!gameStarted) {
+              startGameLocally();
+            }
+          }, 500);
         }
       }).catch(err => {
         console.error('[game.js] Join error:', err);
@@ -160,9 +166,11 @@ function initializeRoom() {
     if (data.playerCount === 2) {
       statusDiv.textContent = 'Opponent joined - starting game...';
       // Start game locally since server stateless may lose track
-      if (!gameStarted && !myColor) {
-        startGameLocally();
-      }
+      setTimeout(() => {
+        if (!gameStarted) {
+          startGameLocally();
+        }
+      }, 500);
     } else {
       statusDiv.textContent = `You are in the room (${data.playerCount}/2 players). Send URL to opponent.`;
     }
@@ -822,9 +830,14 @@ function updateStatus() {
 // Start game locally (used when server stateless loses track)
 function startGameLocally() {
   console.log('[game.js] Starting game locally');
+  // Assign role based on if we were the first to join
+  if (!myRole) {
+    myRole = 'Player 1';
+  }
   const isFirstPlayer = myRole === 'Player 1';
   myColor = isFirstPlayer ? 'black' : 'red';
   sessionStorage.setItem('myAssignedColor', myColor);
+  sessionStorage.setItem('myRole', myRole);
   currentPlayer = 'black';
   initBoard();
   moveHistory = [];
