@@ -1,14 +1,3 @@
-// Use current origin for socket connection (works for both local and production)
-const socketUrl = window.location.origin === 'http://localhost:3000'
-  ? 'http://localhost:3000'
-  : 'https://multiplayer-checkers.onrender.com';
-
-const socket = io(socketUrl, {
-  transports: ['websocket', 'polling']
-});
-
-console.log('[game.js] Connecting to socket server:', socketUrl);
-
 const params = new URLSearchParams(window.location.search);
 const roomCode = params.get('room');
 
@@ -17,6 +6,7 @@ let myColor = null;
 let myRole = null;
 let mySocketId = null;
 let currentRoom = null;
+let channel = null;
 
 // AI mode flag
 let isAIMode = false;
@@ -58,6 +48,13 @@ if (playAiBtn) {
   };
 }
 
+// API URL for Pusher events
+const apiUrl = window.location.origin === 'http://localhost:3000'
+  ? 'http://localhost:3001'
+  : 'https://multiplayer-checkers.onrender.com';
+
+console.log('[game.js] API URL:', apiUrl);
+
 // Start AI mode
 function startAIMode() {
   console.log('[game.js] Starting AI mode');
@@ -94,21 +91,16 @@ function generateRoomCode() {
 
 // Initialize room on load
 function initializeRoom() {
-  console.log('[game.js] initializeRoom called. roomCode:', roomCode, 'socket connected:', socket.connected);
+  console.log('[game.js] initializeRoom called. roomCode:', roomCode);
 
   if (roomCode) {
     // Join existing room
     currentRoom = roomCode;
-    console.log('[game.js] Emitting joinRoom for existing room:', currentRoom);
-    socket.emit('joinRoom', currentRoom);
     console.log('[game.js] Joining existing room:', currentRoom);
   } else {
     // Create new room
     currentRoom = generateRoomCode();
-    console.log('[game.js] Emitting createRoom for new room:', currentRoom);
-    socket.emit('createRoom', currentRoom);
-    console.log('[game.js] Emitting joinRoom for new room:', currentRoom);
-    socket.emit('joinRoom', currentRoom);
+    console.log('[game.js] Created new room:', currentRoom);
 
     // Update URL
     const url = new URL(window.location.href);
@@ -119,171 +111,155 @@ function initializeRoom() {
     if (joinUrlDiv) {
       joinUrlDiv.textContent = url.href;
     }
-
-    console.log('[game.js] Created new room:', currentRoom);
   }
+
+  // Subscribe to Pusher presence channel
+  channel = pusher.subscribe(`presence-${currentRoom}`);
+  console.log('[game.js] Subscribed to Pusher channel:', `presence-${currentRoom}`);
+
+  // Listen for player joined
+  channel.bind('pusher:subscription_succeeded', (members) => {
+    console.log('[game.js] Subscription succeeded. Members:', members.count);
+    mySocketId = pusher.connection.socket_id;
+    console.log('[game.js] My socket ID:', mySocketId);
+
+    // Notify others that I joined
+    const myRole = members.count === 1 ? 'Player 1' : 'Player 2';
+    myRole = myRole;
+    console.log('[game.js] My role:', myRole);
+
+    // Notify other players
+    fetch(`${apiUrl}/api/game/joined`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ room: currentRoom, role: myRole })
+    });
+
+    // Auto-start if 2 players
+    if (members.count === 2) {
+      startGameOnServer();
+    }
+  });
+
+  // Listen for start game
+  channel.bind('startGame', (data) => {
+    console.log('[game.js] startGame event received:', data);
+    handleStartGame(data);
+  });
+
+  // Listen for player joined
+  channel.bind('playerJoined', (data) => {
+    console.log('[game.js] playerJoined event received:', data);
+    statusDiv.textContent = `${data.role} joined - starting game...`;
+    if (!myRole) {
+      myRole = 'Player 1';
+    }
+  });
+
+  // Listen for sync board (moves)
+  channel.bind('syncBoard', (data) => {
+    console.log('[game.js] syncBoard event received');
+    handleSyncBoard(data);
+  });
+
+  // Listen for opponent left
+  channel.bind('opponentLeft', () => {
+    console.log('[game.js] opponentLeft event received');
+    const myPoints = countPieces(myColor);
+    showEndGameScreen(`Opponent left. You win!`, myPoints);
+  });
+
+  // Listen for chat messages
+  channel.bind('chatMessage', (data) => {
+    console.log('[game.js] chatMessage received:', data);
+    appendChatMessage(data.sender, data.msg);
+  });
+}
+
+// Start game on server
+function startGameOnServer() {
+  const colorAssignments = {};
+  const roles = { [mySocketId]: myRole };
+
+  // Assign colors based on join order
+  const members = channel.members;
+  const memberIds = Object.keys(members.members);
+  colorAssignments[memberIds[0]] = 'red';
+  colorAssignments[memberIds[1]] = 'black';
+
+  const firstTurn = 'black';
+  const board = getInitialBoardForServer();
+  const moveHistory = [];
+
+  fetch(`${apiUrl}/api/game/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      room: currentRoom,
+      colorAssignments,
+      firstTurn,
+      board,
+      moveHistory,
+      roles
+    })
+  });
+}
+
+// Get initial board for server
+function getInitialBoardForServer() {
+  const board = [];
+  for (let row = 0; row < 8; row++) {
+    let rowArr = [];
+    for (let col = 0; col < 8; col++) {
+      if ((row + col) % 2 === 1) {
+        if (row < 3) rowArr.push({ color: 'black', king: false });
+        else if (row > 4) rowArr.push({ color: 'red', king: false });
+        else rowArr.push(null);
+      } else {
+        rowArr.push(null);
+      }
+    }
+    board.push(rowArr);
+  }
+  return board;
 }
 
 // Handle start game
-socket.on('startGame', ({ colorAssignments, firstTurn, board: serverBoard, moveHistory: serverHistory, roles, lastMove: serverLastMove }) => {
-  console.log('[game.js] startGame event received:', { colorAssignments, firstTurn, roles });
-  
+function handleStartGame({ colorAssignments, firstTurn, board: serverBoard, moveHistory: serverHistory, roles, lastMove: serverLastMove }) {
+  console.log('[game.js] handleStartGame:', { colorAssignments, firstTurn, roles });
+
   // Assign my color from server
-  if (colorAssignments && socket.id in colorAssignments) {
-    myColor = colorAssignments[socket.id];
+  if (colorAssignments && mySocketId in colorAssignments) {
+    myColor = colorAssignments[mySocketId];
     sessionStorage.setItem('myAssignedColor', myColor);
     console.log('[game.js] Assigned myColor from server:', myColor);
   }
-  if (roles && roles[socket.id]) {
-    myRole = roles[socket.id];
+  if (roles && roles[mySocketId]) {
+    myRole = roles[mySocketId];
     sessionStorage.setItem('myRole', myRole);
     console.log('[game.js] Assigned myRole from server:', myRole);
   }
-  
+
   currentPlayer = firstTurn || 'black';
   isMyTurn = (myColor === currentPlayer);
   gameStarted = true;
   gameEnded = false;
-  
+
   if (serverBoard) board = JSON.parse(JSON.stringify(serverBoard));
   if (serverHistory) moveHistory = [...serverHistory];
   if (serverLastMove) lastMove = serverLastMove;
   else lastMove = null;
-  
+
   renderBoard();
   renderMoveHistory();
   highlightLastMove();
   updateStatus();
   checkGameOver();
-});
-
-// Handle player joined
-socket.on('playerJoined', ({ role }) => {
-  console.log('[game.js] playerJoined event received:', role);
-  console.log('[game.js] Current myRole:', myRole);
-  statusDiv.textContent = `${role} joined - starting game...`;
-  if (!myRole) {
-    myRole = 'Player 1';
-    console.log('[game.js] Set myRole to Player 1 (was null)');
-  }
-});
-
-// Handle room state updates
-socket.on('roomState', (state) => {
-  console.log('[game.js] roomState event received:', state);
-  if (state.roles) {
-    const playerCount = Object.keys(state.roles).length;
-    console.log('[game.js] Players in room:', playerCount);
-    statusDiv.textContent = `Waiting for opponent... (${playerCount}/2 players)`;
-  }
-});
-
-// --- Move history panel ---
-let moveHistoryElem = document.getElementById('move-history');
-const boardSize = 8;
-const boardDiv = document.getElementById('game-board');
-const statusDiv = document.getElementById('game-status');
-const printBtn = document.getElementById('print-btn');
-
-// --- Move history panel logic ---
-function renderMoveHistory() {
-  if (!moveHistoryElem) {
-    console.warn('[game.js] moveHistoryElem not found, skipping renderMoveHistory');
-    return;
-  }
-  
-  moveHistoryElem.innerHTML = '';
-  let moves = moveHistory || [];
-  for (let i = 0; i < moves.length; i++) {
-    const li = document.createElement('li');
-    li.textContent = moves[i];
-    moveHistoryElem.appendChild(li);
-  }
 }
 
-// --- Add Leave Game button ---
-let leaveBtn = document.getElementById('leave-btn');
-if (!leaveBtn) {
-  leaveBtn = document.createElement('button');
-  leaveBtn.id = 'leave-btn';
-  leaveBtn.textContent = 'Leave Game';
-  printBtn.parentNode.appendChild(leaveBtn);
-}
-
-leaveBtn.onclick = () => {
-  console.log('[game.js] Leave Game clicked');
-  socket.emit('leaveGame', { room: currentRoom || roomCode, color: myColor });
-  window.location.href = '/';
-};
-
-// --- Chat elements ---
-const chatForm = document.getElementById('chat-form');
-const chatInput = document.getElementById('chat-input');
-const chatMessages = document.getElementById('chat-messages');
-
-let board = [];
-let currentPlayer = 'black'; // Black goes first by default
-let selected = null;
-let validMoves = [];
-let moveHistory = [];
-let isMyTurn = false;
-let gameStarted = false;
-let gameEnded = false;
-
-// Animation and highlight state
-let lastMove = null; // {from: {row,col}, to: {row,col}}
-
-// Restore initial board and move history if coming from lobby
-const startBoard = sessionStorage.getItem('startBoard');
-const startMoveHistory = sessionStorage.getItem('startMoveHistory');
-const startFirstTurn = sessionStorage.getItem('startFirstTurn');
-
-// Get my socket id after connecting
-socket.on('connect', () => {
-  mySocketId = socket.id;
-  console.log('[game.js] Connected to server. socket.id:', mySocketId);
-
-  // Initialize room - do this in the next tick to ensure connection is fully established
-  setTimeout(() => {
-    initializeRoom();
-  }, 100);
-
-  // Start health check pings to keep server awake (every 4 minutes)
-  startHealthCheckPings();
-});
-
-// Handle connection errors
-socket.on('connect_error', (error) => {
-  console.error('[game.js] Socket connection error:', error);
-  statusDiv.textContent = 'Connection error. Please refresh the page.';
-});
-
-socket.on('disconnect', () => {
-  console.log('[game.js] Socket disconnected');
-  statusDiv.textContent = 'Disconnected from server.';
-});
-
-// Health check pings to keep server awake
-let healthCheckInterval = null;
-function startHealthCheckPings() {
-  if (healthCheckInterval) clearInterval(healthCheckInterval);
-
-  // Ping the health endpoint every 4 minutes (240000ms)
-  healthCheckInterval = setInterval(() => {
-    const healthUrl = socketUrl + '/health';
-    fetch(healthUrl)
-      .then(res => res.json())
-      .then(data => console.log('[game.js] Health check successful:', data))
-      .catch(err => console.error('[game.js] Health check failed:', err));
-  }, 240000);
-
-  console.log('[game.js] Health check pings started (every 4 minutes)');
-}
-
-// --- Updated syncBoard to animate opponent's moves step-by-step ---
-socket.on('syncBoard', ({ board: serverBoard, currentPlayer: serverCurrent, moveHistory: serverHistory, lastMove: serverLastMove, color, role }) => {
-  console.log('[game.js] syncBoard event received');
-  // If this is not my move, animate the opponent's move
+// Handle sync board
+function handleSyncBoard({ board: serverBoard, currentPlayer: serverCurrent, moveHistory: serverHistory, lastMove: serverLastMove, color, role }) {
+  console.log('[game.js] handleSyncBoard event received');
   const isOpponentMove = (myColor !== currentPlayer);
   if (serverLastMove && isOpponentMove) {
     animateMove(serverLastMove.from, serverLastMove.to, () => {
@@ -325,21 +301,93 @@ socket.on('syncBoard', ({ board: serverBoard, currentPlayer: serverCurrent, move
     updateStatus();
     checkGameOver();
   }
+}
+
+// --- Move history panel ---
+let moveHistoryElem = document.getElementById('move-history');
+const boardSize = 8;
+const boardDiv = document.getElementById('game-board');
+const statusDiv = document.getElementById('game-status');
+const printBtn = document.getElementById('print-btn');
+
+// --- Move history panel logic ---
+function renderMoveHistory() {
+  if (!moveHistoryElem) {
+    console.warn('[game.js] moveHistoryElem not found, skipping renderMoveHistory');
+    return;
+  }
+  
+  moveHistoryElem.innerHTML = '';
+  let moves = moveHistory || [];
+  for (let i = 0; i < moves.length; i++) {
+    const li = document.createElement('li');
+    li.textContent = moves[i];
+    moveHistoryElem.appendChild(li);
+  }
+}
+
+// --- Add Leave Game button ---
+let leaveBtn = document.getElementById('leave-btn');
+if (!leaveBtn) {
+  leaveBtn = document.createElement('button');
+  leaveBtn.id = 'leave-btn';
+  leaveBtn.textContent = 'Leave Game';
+  printBtn.parentNode.appendChild(leaveBtn);
+}
+
+leaveBtn.onclick = () => {
+  console.log('[game.js] Leave Game clicked');
+  fetch(`${apiUrl}/api/game/left`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ room: currentRoom || roomCode })
+  });
+  window.location.href = '/';
+};
+
+// --- Chat elements ---
+const chatForm = document.getElementById('chat-form');
+const chatInput = document.getElementById('chat-input');
+const chatMessages = document.getElementById('chat-messages');
+
+let board = [];
+let currentPlayer = 'black'; // Black goes first by default
+let selected = null;
+let validMoves = [];
+let moveHistory = [];
+let isMyTurn = false;
+let gameStarted = false;
+let gameEnded = false;
+
+// Animation and highlight state
+let lastMove = null; // {from: {row,col}, to: {row,col}}
+
+// Restore initial board and move history if coming from lobby
+const startBoard = sessionStorage.getItem('startBoard');
+const startMoveHistory = sessionStorage.getItem('startMoveHistory');
+const startFirstTurn = sessionStorage.getItem('startFirstTurn');
+
+// Get my socket id after connecting
+pusher.connection.bind('connected', () => {
+  mySocketId = pusher.connection.socket_id;
+  console.log('[game.js] Pusher connected. socket.id:', mySocketId);
+
+  // Initialize room
+  initializeRoom();
 });
 
-// Listen for opponent leaving
-socket.on('opponentLeft', () => {
-  console.log('[game.js] opponentLeft event received');
-  // Calculate points for the player who stayed
-  const myPoints = countPieces(myColor);
-  showEndGameScreen(`Opponent left. You win!`, myPoints);
+// Handle connection errors
+pusher.connection.bind('error', (error) => {
+  console.error('[game.js] Pusher connection error:', error);
+  statusDiv.textContent = 'Connection error. Please refresh the page.';
 });
 
-// Listen for game reset
-socket.on('resetGame', () => {
-  console.log('[game.js] resetGame event received');
-  initBoard();
+pusher.connection.bind('disconnected', () => {
+  console.log('[game.js] Pusher disconnected');
+  statusDiv.textContent = 'Disconnected from server.';
 });
+
+
 
 // Initialize board with pieces
 function initBoard() {
@@ -623,12 +671,44 @@ function onSquareClick(e) {
 // Send move to server, let server update board and broadcast to both players
 function sendMoveToServer(from, to, move) {
   console.log('[game.js] Sending move to server:', { from, to, move });
-  socket.emit('move', {
-    room: currentRoom || roomCode,
-    from,
-    to,
-    move
+
+  // Execute move locally first
+  const piece = board[from.row][from.col];
+  board[to.row][to.col] = piece;
+  board[from.row][from.col] = null;
+  let becameKing = false;
+  if ((piece.color === 'red' && to.row === 0) || (piece.color === 'black' && to.row === 7)) {
+    if (!piece.king) {
+      piece.king = true;
+      becameKing = true;
+    }
+  }
+  if (move.jump) {
+    const { row: jr, col: jc } = move.jumped;
+    board[jr][jc] = null;
+  }
+  moveHistory.push(
+    `${capitalize(currentPlayer)}: (${from.row},${from.col}) → (${to.row},${to.col})${move.jump ? ' (jump)' : ''}${becameKing ? ' (king)' : ''}`
+  );
+
+  // Send to server via Pusher
+  const lastMove = { from, to };
+  currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
+
+  fetch(`${apiUrl}/api/game/move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      room: currentRoom || roomCode,
+      from,
+      to,
+      move,
+      lastMove,
+      currentPlayer,
+      moveHistory
+    })
   });
+
   isMyTurn = false;
   updateStatus();
 }
@@ -765,7 +845,11 @@ function updateStatus() {
 // Leave game if window/tab closed
 window.addEventListener('beforeunload', () => {
   console.log('[game.js] beforeunload: leaving game');
-  socket.emit('leaveGame', { room: currentRoom || roomCode, color: myColor });
+  fetch(`${apiUrl}/api/game/left`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ room: currentRoom || roomCode })
+  });
 });
 
 // --- Chat box logic ---
@@ -789,15 +873,14 @@ if (chatForm && chatInput && chatMessages) {
       // Use myRole if available, else fallback to "You"
       const senderLabel = myRole ? myRole : "You";
       appendChatMessage(senderLabel, msg);
-      socket.emit('chatMessage', { room: currentRoom || roomCode, msg });
+      fetch(`${apiUrl}/api/game/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room: currentRoom || roomCode, sender: senderLabel, msg })
+      });
       chatInput.value = '';
       console.log('[game.js] Chat message sent:', msg);
     }
-  });
-
-  socket.on('chatMessage', ({ sender, msg }) => {
-    appendChatMessage(sender, msg);
-    console.log('[game.js] Chat message received:', sender, msg);
   });
 
   function appendChatMessage(sender, msg) {
@@ -813,6 +896,9 @@ if (!startBoard) {
   console.log('[game.js] No startBoard in sessionStorage, calling initBoard');
   initBoard();
 }
+
+// Initialize Pusher room on page load
+initializeRoom();
 
 // --- AI Logic - Working Checkers AI from GitHub ---
 function makeAIMove() {
