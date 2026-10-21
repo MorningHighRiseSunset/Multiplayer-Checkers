@@ -37,8 +37,8 @@ module.exports = async (req, res) => {
       if (rooms[room].players.length === 2) {
         console.log('[pusher.js] 2 players in room, starting game...');
         const colorAssignments = {};
-        colorAssignments[rooms[room].players[0]] = 'red';
-        colorAssignments[rooms[room].players[1]] = 'black';
+        colorAssignments[rooms[room].players[0]] = 'black'; // Player 1 (host) gets black (starts first)
+        colorAssignments[rooms[room].players[1]] = 'red';  // Player 2 gets red
         const firstTurn = 'black';
         const board = getInitialBoard();
         const moveHistory = [];

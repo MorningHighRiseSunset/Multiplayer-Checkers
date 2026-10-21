@@ -580,10 +580,13 @@ function onSquareClick(e) {
   const col = parseInt(e.currentTarget.dataset.col);
   const piece = board[row][col];
 
+  console.log('[game.js] Square clicked:', { row, col, piece, myColor, currentPlayer, isMyTurn, gameStarted, gameEnded });
+
   // Only allow selecting your own color and only if it's your turn
   if (piece && piece.color === myColor && piece.color === currentPlayer) {
     selected = { row, col };
     validMoves = getValidMoves(row, col, hasAnyJumps(currentPlayer));
+    console.log('[game.js] Selected piece, valid moves:', validMoves);
     renderBoard();
     highlightLastMove();
     return;
@@ -591,6 +594,7 @@ function onSquareClick(e) {
 
   if (selected && validMoves.some(m => m.row === row && m.col === col)) {
     const move = validMoves.find(m => m.row === row && m.col === col);
+    console.log('[game.js] Moving to valid square:', move);
     isMyTurn = false;
     lastMove = { from: { ...selected }, to: { row, col } };
     performMoveWithAnimation(selected, { row, col }, move, () => {
