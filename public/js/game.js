@@ -1,5 +1,9 @@
 const params = new URLSearchParams(window.location.search);
-const roomCode = params.get('room');
+const urlRoomCode = params.get('room');
+
+// Check if this is a refresh (we've already loaded with this room code)
+const loadedRoom = sessionStorage.getItem('loadedRoom');
+const roomCode = (loadedRoom === urlRoomCode) ? null : urlRoomCode;
 
 // Game state
 let myColor = null;
@@ -17,14 +21,7 @@ console.log('[game.js] Loaded. roomCode:', roomCode);
 // --- Join URL and AI button logic ---
 const joinUrlDiv = document.getElementById('join-url');
 const copyUrlBtn = document.getElementById('copy-url-btn');
-const newGameBtn = document.getElementById('new-game-btn');
 const playAiBtn = document.getElementById('play-ai-btn');
-
-// New Game button - generate new room and reload
-newGameBtn.addEventListener('click', () => {
-  const newRoom = generateRoomCode();
-  window.location.href = `game.html?room=${newRoom}`;
-});
 
 // Display the join URL
 if (joinUrlDiv) {
@@ -103,6 +100,7 @@ function initializeRoom() {
   if (roomCode) {
     // Join existing room
     currentRoom = roomCode;
+    sessionStorage.setItem('loadedRoom', roomCode);
     console.log('[game.js] Joining existing room:', currentRoom);
   } else {
     // Create new room
