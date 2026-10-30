@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Checkers</title>
+<style>
+  :root {
+    --dark: #5c3a21;
+    --light: #e8d5b5;
+    --board-border: #2c1810;
+    --red: #c41e3a;
+    --red-dark: #8b0000;
+    --black: #1a1a1a;
+    --selected: #ffeb3b;
+    --valid: #81c784;
+    --capture: #ef5350;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #eee;
+    padding: 12px;
+  }
+  h1 {
+    font-size: 1.55rem;
+    margin-bottom: 4px;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+  .subtitle { font-size: 0.82rem; opacity: 0.7; margin-bottom: 12px; }
+  .status {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 10px;
+    min-height: 1.4em;
+    text-align: center;
+  }
+  .status.ai-thinking { color: #ffb74d; }
+  .status.player-win { color: #81c784; }
+  .status.ai-win { color: #ef5350; }
+  .board-wrap {
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5), 0 0 0 6px var(--board-border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  #board {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    width: min(92vw, 480px);
+    height: min(92vw, 480px);
+    background: var(--light);
+  }
+  .square {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .square.dark { background: var(--dark); }
+  .square.light { background: var(--light); }
+  .square.selected { box-shadow: inset 0 0 0 4px var(--selected); }
+  .square.valid { box-shadow: inset 0 0 0 4px var(--valid); }
+  .square.capture { box-shadow: inset 0 0 0 4px var(--capture); }
+  .square.last-move { box-shadow: inset 0 0 0 3px rgba(255,235,59,0.4); }
+  .piece {
+    width: 72%;
+    height: 72%;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.1s;
+    position: relative;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.4);
+  }
+  .piece:hover { transform: scale(1.06); }
+  .piece.red {
+    background: radial-gradient(circle at 35% 30%, #ff6b6b, var(--red) 55%, var(--red-dark));
+    border: 2px solid #8b0000;
+  }
+  .piece.black {
+    background: radial-gradient(circle at 35% 30%, #555, var(--black) 55%, #0a0a0a);
+    border: 2px solid #000;
+  }
+  .piece.king::after {
+    content: '♔';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 1.3em;
+    color: gold;
+    text-shadow: 0 1px 2px #000;
+    pointer-events: none;
+  }
+  .controls {
+    margin-top: 14px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+  }
+  button {
+    background: #0f3460;
+    color: #fff;
+    border: 1px solid #1a4a7a;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+  button:hover { background: #1a4a7a; }
+  .info {
+    margin-top: 12px;
+    font-size: 0.78rem;
+    opacity: 0.65;
+    text-align: center;
+    max-width: 440px;
+    line-height: 1.4;
+  }
+</style>
+</head>
+<body>
+  <h1>♛ Checkers</h1>
+  <p class="subtitle">American Checkers • One-square Kings • Mandatory Captures</p>
+  <div class="status" id="status">Your turn (Red)</div>
+  <div class="board-wrap"><div id="board"></div></div>
+  <div class="controls">
+    <button id="newGame">New Game</button>
+  </div>
+  <p class="info">
+    You are Red (bottom). Kings move <b>only one square</b> (American rules).<br>
+    Captures are mandatory. Multi-jumps must be completed.
+  </p>
+
+<script>
+(() => {
+  // 0 empty | 1 red man | 2 red king | -1 black man | -2 black king
+  // Red at bottom (rows 5-7), Black at top (rows 0-2). Red moves first.
+  // Play only on dark squares: (r + c) % 2 === 1
+
+  const SIZE = 8;
+  const MAX_DEPTH = 8;          // fixed maximum strength
+  const QUIESCE_DEPTH = 6;      // extra capture search depth
+
+  let board = [];
+  let turn = 1;               // 1 = red (player), -1 = black (AI)
+  let selected = null;
+  let validMoves = [];
+  let mustContinue = null;
+  let gameOver = false;
+  let lastMove = null;
+  let thinking = false;
+
+  const boardEl = document.getElementById('board');
+  const statusEl = document.getElementById('status');
+
+  // ---------- Helpers ----------
+  const abs = Math.abs;
+  const sign = x => (x > 0 ? 1 : x < 0 ? -1 : 0);
+  const inBounds = (r, c) => r >= 0 && r < SIZE && c >= 0 && c < SIZE;
+  const isDark = (r, c) => (r + c) % 2 === 1;
+
+  function dirsFor(piece) {
+    if (abs(piece) === 2) return [[-1,-1],[-1,1],[1,-1],[1,1]]; // king: any direction, ONE square
+    if (piece === 1) return [[-1,-1],[-1,1]];                   // red man: up only
+    return [[1,-1],[1,1]];                                      // black man: down only
+  }
+
+  // ---------- Move Generation ----------
+  function getCapturesFrom(b, startR, startC, piece) {
+    const results = [];
+    function search(r, c, captured, path) {
+      for (const [dr, dc] of dirsFor(piece)) {
+        const mr = r + dr, mc = c + dc;
+        const lr = r + 2 * dr, lc = c + 2 * dc;
+        if (!inBounds(lr, lc) || !isDark(lr, lc) || b[lr][lc] !== 0) continue;
+        const mid = b[mr][mc];
+        if (sign(mid) !== -sign(piece)) continue;
+        if (captured.some(p => p.r === mr && p.c === mc)) continue;
+
+        const savedFrom = b[r][c], savedMid = b[mr][mc];
+        b[r][c] = 0;
+        b[mr][mc] = 0;
+        b[lr][lc] = piece;
+
+        const newCap = captured.concat({ r: mr, c: mc });
+        const newPath = path.concat({ r: lr, c: lc });
+        const before = results.length;
+        search(lr, lc, newCap, newPath);
+        if (results.length === before) {
+          results.push({
+            from: { r: startR, c: startC },
+            to: { r: lr, c: lc },
+            captures: newCap,
+            path: newPath
+          });
+        }
+
+        b[r][c] = savedFrom;
+        b[mr][mc] = savedMid;
+        b[lr][lc] = 0;
+      }
+    }
+    search(startR, startC, [], []);
+    return results;
+  }
+
+  function generateMoves(b, side, onlyFrom = null) {
+    const simple = [];
+    const jumps = [];
+
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        if (sign(b[r][c]) !== side) continue;
+        if (onlyFrom && (r !== onlyFrom.r || c !== onlyFrom.c)) continue;
+        const piece = b[r][c];
+
+        jumps.push(...getCapturesFrom(b, r, c, piece));
+
+        for (const [dr, dc] of dirsFor(piece)) {
+          const nr = r + dr, nc = c + dc;
+          if (inBounds(nr, nc) && b[nr][nc] === 0 && isDark(nr, nc)) {
+            simple.push({
+              from: { r, c },
+              to: { r: nr, c: nc },
+              captures: [],
+              path: [{ r: nr, c: nc }]
+            });
+          }
+        }
+      }
+    }
+    return jumps.length > 0 ? jumps : simple;
+  }
+
+  function applyMove(b, move) {
+    const nb = b.map(row => row.slice());
+    const piece = nb[move.from.r][move.from.c];
+    nb[move.from.r][move.from.c] = 0;
+    for (const cap of move.captures) nb[cap.r][cap.c] = 0;
+
+    let final = piece;
+    if (abs(piece) === 1) {
+      if (piece === 1 && move.to.r === 0) final = 2;
+      if (piece === -1 && move.to.r === 7) final = -2;
+    }
+    nb[move.to.r][move.to.c] = final;
+    return nb;
+  }
+
+  function canContinueAfter(move, originalPiece) {
+    if (abs(originalPiece) === 2) return true;
+    if (originalPiece === 1 && move.to.r === 0) return false;
+    if (originalPiece === -1 && move.to.r === 7) return false;
+    return true;
+  }
+
+  // ---------- Evaluation (heavily material-focused) ----------
+  // Material is dominant so the AI refuses pointless sacrifices.
+  function evaluate(b) {
+    let score = 0;
+    let redMen = 0, redKings = 0, blackMen = 0, blackKings = 0;
+
+    // Piece-square tables
+    const manPST = [ // oriented for red (row 0 = promotion)
+      [0,0,0,0,0,0,0,0],
+      [25,25,25,25,25,25,25,25],
+      [16,16,18,18,18,18,16,16],
+      [10,10,12,14,14,12,10,10],
+      [6,6,8,10,10,8,6,6],
+      [3,3,4,5,5,4,3,3],
+      [1,1,1,2,2,1,1,1],
+      [0,0,0,0,0,0,0,0]
+    ];
+    const kingPST = [
+      [0,0,2,2,2,2,0,0],
+      [0,5,8,8,8,8,5,0],
+      [2,8,12,12,12,12,8,2],
+      [2,8,12,14,14,12,8,2],
+      [2,8,12,14,14,12,8,2],
+      [2,8,12,12,12,12,8,2],
+      [0,5,8,8,8,8,5,0],
+      [0,0,2,2,2,2,0,0]
+    ];
+
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        const p = b[r][c];
+        if (p === 0) continue;
+        const isRed = p > 0;
+        const isKing = abs(p) === 2;
+
+        // Strong material values – this is the main anti-sacrifice measure
+        let val = isKing ? 450 : 100;
+
+        if (isKing) {
+          val += kingPST[r][c];
+        } else {
+          const pst = isRed ? manPST[r][c] : manPST[7 - r][c];
+          val += pst;
+        }
+
+        // Prefer not sitting on the edge
+        if (c === 0 || c === 7) val -= 4;
+
+        if (isRed) {
+          score += val;
+          if (isKing) redKings++; else redMen++;
+        } else {
+          score -= val;
+          if (isKing) blackKings++; else blackMen++;
+        }
+      }
+    }
+
+    // Mobility (light weight)
+    const redMob = generateMoves(b, 1).length;
+    const blackMob = generateMoves(b, -1).length;
+    score += (redMob - blackMob) * 3;
+
+    // Bonus for having more kings (endgame awareness)
+    score += (redKings - blackKings) * 30;
+
+    // Terminal
+    if (redMen + redKings === 0) return -100000;
+    if (blackMen + blackKings === 0) return 100000;
+    if (redMob === 0) return -99999;
+    if (blackMob === 0) return 99999;
+
+    return score;
+  }
+
+  // ---------- Quiescence (search all captures) ----------
+  function quiescence(b, alpha, beta, maximizing, qDepth) {
+    const standPat = evaluate(b);
+
+    if (maximizing) {
+      if (standPat >= beta) return beta;
+      if (standPat > alpha) alpha = standPat;
+    } else {
+      if (standPat <= alpha) return alpha;
+      if (standPat < beta) beta = standPat;
+    }
+
+    if (qDepth <= 0) return standPat;
+
+    const side = maximizing ? 1 : -1;
+    const moves = generateMoves(b, side).filter(m => m.captures.length > 0);
+    // Most captures first
+    moves.sort((a, b) => b.captures.length - a.captures.length);
+
+    for (const m of moves) {
+      const nb = applyMove(b, m);
+      const score = quiescence(nb, alpha, beta, !maximizing, qDepth - 1);
+      if (maximizing) {
+        if (score >= beta) return beta;
+        if (score > alpha) alpha = score;
+      } else {
+        if (score <= alpha) return alpha;
+        if (score < beta) beta = score;
+      }
+    }
+    return maximizing ? alpha : beta;
+  }
+
+  // ---------- Minimax + Alpha-Beta ----------
+  function minimax(b, depth, alpha, beta, maximizing) {
+    if (depth === 0) {
+      return quiescence(b, alpha, beta, maximizing, QUIESCE_DEPTH);
+    }
+
+    const side = maximizing ? 1 : -1;
+    let moves = generateMoves(b, side);
+    if (moves.length === 0) {
+      return maximizing ? -100000 + depth : 100000 - depth;
+    }
+
+    // Move ordering: more captures first, then longer sequences
+    moves.sort((a, b) => {
+      const ca = a.captures.length, cb = b.captures.length;
+      if (ca !== cb) return cb - ca;
+      return 0;
+    });
+
+    if (maximizing) {
+      let maxEval = -Infinity;
+      for (const m of moves) {
+        const nb = applyMove(b, m);
+        const ev = minimax(nb, depth - 1, alpha, beta, false);
+        if (ev > maxEval) maxEval = ev;
+        if (ev > alpha) alpha = ev;
+        if (beta <= alpha) break;
+      }
+      return maxEval;
+    } else {
+      let minEval = Infinity;
+      for (const m of moves) {
+        const nb = applyMove(b, m);
+        const ev = minimax(nb, depth - 1, alpha, beta, true);
+        if (ev < minEval) minEval = ev;
+        if (ev < beta) beta = ev;
+        if (beta <= alpha) break;
+      }
+      return minEval;
+    }
+  }
+
+  // Iterative deepening – builds a strong principal variation
+  function getBestMove(b) {
+    const moves = generateMoves(b, -1); // AI = black
+    if (moves.length === 0) return null;
+    if (moves.length === 1) return moves[0];
+
+    // Root ordering: captures first
+    moves.sort((a, b) => b.captures.length - a.captures.length);
+
+    let bestMove = moves[0];
+    let bestScore = Infinity;
+
+    for (let d = 1; d <= MAX_DEPTH; d++) {
+      let currentBest = null;
+      let currentScore = Infinity;
+
+      // light shuffle among equal-priority moves for variety
+      for (let i = moves.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [moves[i], moves[j]] = [moves[j], moves[i]];
+      }
+      moves.sort((a, b) => b.captures.length - a.captures.length);
+
+      for (const m of moves) {
+        const nb = applyMove(b, m);
+        // AI minimizes (wants low score from Red's perspective)
+        const score = minimax(nb, d - 1, -Infinity, Infinity, true);
+        if (score < currentScore) {
+          currentScore = score;
+          currentBest = m;
+        }
+      }
+
+      if (currentBest) {
+        bestMove = currentBest;
+        bestScore = currentScore;
+      }
+
+      // Forced win found – no need to go deeper
+      if (bestScore <= -90000) break;
+    }
+    return bestMove;
+  }
+
+  // ---------- UI ----------
+  function initBoard() {
+    board = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+    for (let r = 0; r < 3; r++)
+      for (let c = 0; c < SIZE; c++)
+        if (isDark(r, c)) board[r][c] = -1;
+    for (let r = 5; r < 8; r++)
+      for (let c = 0; c < SIZE; c++)
+        if (isDark(r, c)) board[r][c] = 1;
+    turn = 1;
+    selected = null;
+    validMoves = [];
+    mustContinue = null;
+    gameOver = false;
+    lastMove = null;
+    thinking = false;
+    updateStatus();
+    render();
+  }
+
+  function render() {
+    boardEl.innerHTML = '';
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        const sq = document.createElement('div');
+        sq.className = 'square ' + (isDark(r, c) ? 'dark' : 'light');
+        if (selected && selected.r === r && selected.c === c) sq.classList.add('selected');
+        if (lastMove && ((lastMove[0].r === r && lastMove[0].c === c) ||
+                         (lastMove[1].r === r && lastMove[1].c === c))) {
+          sq.classList.add('last-move');
+        }
+        const target = validMoves.find(m => m.to.r === r && m.to.c === c);
+        if (target) sq.classList.add(target.captures.length ? 'capture' : 'valid');
+
+        const p = board[r][c];
+        if (p !== 0) {
+          const piece = document.createElement('div');
+          piece.className = 'piece ' + (p > 0 ? 'red' : 'black') + (abs(p) === 2 ? ' king' : '');
+          sq.appendChild(piece);
+        }
+        sq.addEventListener('click', () => onSquareClick(r, c));
+        boardEl.appendChild(sq);
+      }
+    }
+  }
+
+  function updateStatus() {
+    if (gameOver) return;
+    if (thinking) {
+      statusEl.textContent = 'AI is thinking…';
+      statusEl.className = 'status ai-thinking';
+      return;
+    }
+    statusEl.className = 'status';
+    statusEl.textContent = mustContinue ? 'Continue jumping!' : (turn === 1 ? 'Your turn (Red)' : 'AI thinking…');
+    if (turn === -1) statusEl.className = 'status ai-thinking';
+  }
+
+  function checkGameOver() {
+    const redMoves = generateMoves(board, 1);
+    const blackMoves = generateMoves(board, -1);
+    let red = 0, black = 0;
+    for (let r = 0; r < SIZE; r++)
+      for (let c = 0; c < SIZE; c++) {
+        if (board[r][c] > 0) red++;
+        if (board[r][c] < 0) black++;
+      }
+    if (red === 0 || (turn === 1 && redMoves.length === 0)) {
+      gameOver = true;
+      statusEl.textContent = 'AI wins!';
+      statusEl.className = 'status ai-win';
+      return true;
+    }
+    if (black === 0 || (turn === -1 && blackMoves.length === 0)) {
+      gameOver = true;
+      statusEl.textContent = 'You win! (Incredible)';
+      statusEl.className = 'status player-win';
+      return true;
+    }
+    return false;
+  }
+
+  function onSquareClick(r, c) {
+    if (gameOver || thinking || turn !== 1) return;
+
+    if (mustContinue) {
+      if (r === mustContinue.r && c === mustContinue.c) {
+        selected = { r, c };
+        validMoves = generateMoves(board, 1, mustContinue);
+        render();
+      }
+      return;
+    }
+
+    if (sign(board[r][c]) === 1) {
+      const all = generateMoves(board, 1);
+      const mine = all.filter(m => m.from.r === r && m.from.c === c);
+      if (mine.length === 0) return;
+      selected = { r, c };
+      validMoves = mine;
+      render();
+      return;
+    }
+
+    if (selected) {
+      const move = validMoves.find(m => m.to.r === r && m.to.c === c);
+      if (move) executePlayerMove(move);
+      else {
+        selected = null;
+        validMoves = [];
+        render();
+      }
+    }
+  }
+
+  function executePlayerMove(move) {
+    const orig = board[move.from.r][move.from.c];
+    board = applyMove(board, move);
+    lastMove = [move.from, move.to];
+    selected = null;
+    validMoves = [];
+
+    if (move.captures.length > 0 && canContinueAfter(move, orig)) {
+      const further = generateMoves(board, 1, move.to);
+      if (further.some(m => m.captures.length > 0)) {
+        mustContinue = move.to;
+        turn = 1;
+        render();
+        updateStatus();
+        return;
+      }
+    }
+
+    mustContinue = null;
+    turn = -1;
+    render();
+    updateStatus();
+    if (checkGameOver()) return;
+    setTimeout(aiMove, 50);
+  }
+
+  function aiMove() {
+    if (gameOver) return;
+    thinking = true;
+    updateStatus();
+    render();
+
+    // Yield to UI so "thinking" shows, then search
+    setTimeout(() => {
+      const move = getBestMove(board);
+      thinking = false;
+      if (!move) {
+        checkGameOver();
+        return;
+      }
+      board = applyMove(board, move);
+      lastMove = [move.from, move.to];
+      turn = 1;
+      mustContinue = null;
+      render();
+      updateStatus();
+      checkGameOver();
+    }, 30);
+  }
+
+  document.getElementById('newGame').addEventListener('click', initBoard);
+  initBoard();
+})();
+</script>
+</body>
+</html>

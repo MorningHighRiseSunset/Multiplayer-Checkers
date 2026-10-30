@@ -933,80 +933,335 @@ if (!startBoard) {
   initializeRoom();
 }
 
-// --- AI Logic - Working Checkers AI from GitHub ---
-function makeAIMove() {
-  if (!isAIMode || gameEnded || currentPlayer !== aiColor) {
-    console.log('[game.js] AI move check failed:', { isAIMode, gameEnded, currentPlayer, aiColor });
-    return;
-  }
+// --- AI Logic - Unbeatable Minimax AI ---
+const AI_SIZE = 8;
+const AI_MAX_DEPTH = 8;
+const AI_QUIESCE_DEPTH = 6;
 
-  console.log('[game.js] AI making move with working minimax AI');
-
-  // Convert our board to library format
-  const libraryBoard = convertOurBoardToLibraryFormat(board);
-  
-  // AI is red (white in library), player is black (black in library)
-  const machineColor = aiColor === 'red' ? 'white' : 'black';
-  
-  // Create AI player and get best move
-  const ai = new MachinePlayer('medium');
-  const libraryMove = ai.chooseBestMove(libraryBoard, machineColor);
-  
-  if (!libraryMove) {
-    console.log('[game.js] AI has no moves');
-    return;
-  }
-
-  // Convert library move back to our format
-  const ourMove = convertLibraryMoveToOurFormat(libraryMove, board);
-  
-  if (!ourMove) {
-    console.log('[game.js] Failed to convert library move');
-    return;
-  }
-
-  console.log('[game.js] AI selected move:', ourMove);
-
-  // Execute the move
-  executeAIMove(ourMove);
-}
-
-// Convert our board format to library format
-function convertOurBoardToLibraryFormat(board) {
-  const libraryBoard = [];
-  for (let row = 0; row < 8; row++) {
-    const rowArr = [];
-    for (let col = 0; col < 8; col++) {
-      const piece = board[row][col];
+// Convert our board format to AI format (0=empty, 1=red man, 2=red king, -1=black man, -2=black king)
+function convertBoardToAIFormat(board) {
+  const aiBoard = [];
+  for (let r = 0; r < AI_SIZE; r++) {
+    const row = [];
+    for (let c = 0; c < AI_SIZE; c++) {
+      const piece = board[r][c];
       if (!piece) {
-        rowArr.push(null);
+        row.push(0);
       } else if (piece.color === 'red') {
-        rowArr.push({ color: 'white', isQueen: piece.king });
+        row.push(piece.king ? 2 : 1);
       } else {
-        rowArr.push({ color: 'black', isQueen: piece.king });
+        row.push(piece.king ? -2 : -1);
       }
     }
-    libraryBoard.push(rowArr);
+    aiBoard.push(row);
   }
-  return libraryBoard;
+  return aiBoard;
 }
 
-// Convert library move back to our format
-function convertLibraryMoveToOurFormat(libraryMove, board) {
-  if (!libraryMove) return null;
+// AI Helper functions
+const aiAbs = Math.abs;
+const aiSign = x => (x > 0 ? 1 : x < 0 ? -1 : 0);
+const aiInBounds = (r, c) => r >= 0 && r < AI_SIZE && c >= 0 && c < AI_SIZE;
+const aiIsDark = (r, c) => (r + c) % 2 === 1;
+
+function aiDirsFor(piece) {
+  if (aiAbs(piece) === 2) return [[-1,-1],[-1,1],[1,-1],[1,1]];
+  if (piece === 1) return [[-1,-1],[-1,1]];
+  return [[1,-1],[1,1]];
+}
+
+// AI Move Generation
+function aiGetCapturesFrom(b, startR, startC, piece) {
+  const results = [];
+  function search(r, c, captured, path) {
+    for (const [dr, dc] of aiDirsFor(piece)) {
+      const mr = r + dr, mc = c + dc;
+      const lr = r + 2 * dr, lc = c + 2 * dc;
+      if (!aiInBounds(lr, lc) || !aiIsDark(lr, lc) || b[lr][lc] !== 0) continue;
+      const mid = b[mr][mc];
+      if (aiSign(mid) !== -aiSign(piece)) continue;
+      if (captured.some(p => p.r === mr && p.c === mc)) continue;
+
+      const savedFrom = b[r][c], savedMid = b[mr][mc];
+      b[r][c] = 0;
+      b[mr][mc] = 0;
+      b[lr][lc] = piece;
+
+      const newCap = captured.concat({ r: mr, c: mc });
+      const newPath = path.concat({ r: lr, c: lc });
+      const before = results.length;
+      search(lr, lc, newCap, newPath);
+      if (results.length === before) {
+        results.push({
+          from: { r: startR, c: startC },
+          to: { r: lr, c: lc },
+          captures: newCap,
+          path: newPath
+        });
+      }
+
+      b[r][c] = savedFrom;
+      b[mr][mc] = savedMid;
+      b[lr][lc] = 0;
+    }
+  }
+  search(startR, startC, [], []);
+  return results;
+}
+
+function aiGenerateMoves(b, side, onlyFrom = null) {
+  const simple = [];
+  const jumps = [];
+
+  for (let r = 0; r < AI_SIZE; r++) {
+    for (let c = 0; c < AI_SIZE; c++) {
+      if (aiSign(b[r][c]) !== side) continue;
+      if (onlyFrom && (r !== onlyFrom.r || c !== onlyFrom.c)) continue;
+      const piece = b[r][c];
+
+      jumps.push(...aiGetCapturesFrom(b, r, c, piece));
+
+      for (const [dr, dc] of aiDirsFor(piece)) {
+        const nr = r + dr, nc = c + dc;
+        if (aiInBounds(nr, nc) && b[nr][nc] === 0 && aiIsDark(nr, nc)) {
+          simple.push({
+            from: { r, c },
+            to: { r: nr, c: nc },
+            captures: [],
+            path: [{ r: nr, c: nc }]
+          });
+        }
+      }
+    }
+  }
+  return jumps.length > 0 ? jumps : simple;
+}
+
+function aiApplyMove(b, move) {
+  const nb = b.map(row => row.slice());
+  const piece = nb[move.from.r][move.from.c];
+  nb[move.from.r][move.from.c] = 0;
+  for (const cap of move.captures) nb[cap.r][cap.c] = 0;
+
+  let final = piece;
+  if (aiAbs(piece) === 1) {
+    if (piece === 1 && move.to.r === 0) final = 2;
+    if (piece === -1 && move.to.r === 7) final = -2;
+  }
+  nb[move.to.r][move.to.c] = final;
+  return nb;
+}
+
+function aiCanContinueAfter(move, originalPiece) {
+  if (aiAbs(originalPiece) === 2) return true;
+  if (originalPiece === 1 && move.to.r === 0) return false;
+  if (originalPiece === -1 && move.to.r === 7) return false;
+  return true;
+}
+
+// AI Evaluation
+function aiEvaluate(b) {
+  let score = 0;
+  let redMen = 0, redKings = 0, blackMen = 0, blackKings = 0;
+
+  const manPST = [
+    [0,0,0,0,0,0,0,0],
+    [25,25,25,25,25,25,25,25],
+    [16,16,18,18,18,18,16,16],
+    [10,10,12,14,14,12,10,10],
+    [6,6,8,10,10,8,6,6],
+    [3,3,4,5,5,4,3,3],
+    [1,1,1,2,2,1,1,1],
+    [0,0,0,0,0,0,0,0]
+  ];
+  const kingPST = [
+    [0,0,2,2,2,2,0,0],
+    [0,5,8,8,8,8,5,0],
+    [2,8,12,12,12,12,8,2],
+    [2,8,12,14,14,12,8,2],
+    [2,8,12,14,14,12,8,2],
+    [2,8,12,12,12,12,8,2],
+    [0,5,8,8,8,8,5,0],
+    [0,0,2,2,2,2,0,0]
+  ];
+
+  for (let r = 0; r < AI_SIZE; r++) {
+    for (let c = 0; c < AI_SIZE; c++) {
+      const p = b[r][c];
+      if (p === 0) continue;
+      const isRed = p > 0;
+      const isKing = aiAbs(p) === 2;
+
+      let val = isKing ? 450 : 100;
+
+      if (isKing) {
+        val += kingPST[r][c];
+      } else {
+        const pst = isRed ? manPST[r][c] : manPST[7 - r][c];
+        val += pst;
+      }
+
+      if (c === 0 || c === 7) val -= 4;
+
+      if (isRed) {
+        score += val;
+        if (isKing) redKings++; else redMen++;
+      } else {
+        score -= val;
+        if (isKing) blackKings++; else blackMen++;
+      }
+    }
+  }
+
+  const redMob = aiGenerateMoves(b, 1).length;
+  const blackMob = aiGenerateMoves(b, -1).length;
+  score += (redMob - blackMob) * 3;
+
+  score += (redKings - blackKings) * 30;
+
+  if (redMen + redKings === 0) return -100000;
+  if (blackMen + blackKings === 0) return 100000;
+  if (redMob === 0) return -99999;
+  if (blackMob === 0) return 99999;
+
+  return score;
+}
+
+// AI Quiescence
+function aiQuiescence(b, alpha, beta, maximizing, qDepth) {
+  const standPat = aiEvaluate(b);
+
+  if (maximizing) {
+    if (standPat >= beta) return beta;
+    if (standPat > alpha) alpha = standPat;
+  } else {
+    if (standPat <= alpha) return alpha;
+    if (standPat < beta) beta = standPat;
+  }
+
+  if (qDepth <= 0) return standPat;
+
+  const side = maximizing ? 1 : -1;
+  const moves = aiGenerateMoves(b, side).filter(m => m.captures.length > 0);
+  moves.sort((a, b) => b.captures.length - a.captures.length);
+
+  for (const m of moves) {
+    const nb = aiApplyMove(b, m);
+    const score = aiQuiescence(nb, alpha, beta, !maximizing, qDepth - 1);
+    if (maximizing) {
+      if (score >= beta) return beta;
+      if (score > alpha) alpha = score;
+    } else {
+      if (score <= alpha) return alpha;
+      if (score < beta) beta = score;
+    }
+  }
+  return maximizing ? alpha : beta;
+}
+
+// AI Minimax
+function aiMinimax(b, depth, alpha, beta, maximizing) {
+  if (depth === 0) {
+    return aiQuiescence(b, alpha, beta, maximizing, AI_QUIESCE_DEPTH);
+  }
+
+  const side = maximizing ? 1 : -1;
+  let moves = aiGenerateMoves(b, side);
+  if (moves.length === 0) {
+    return maximizing ? -100000 + depth : 100000 - depth;
+  }
+
+  moves.sort((a, b) => {
+    const ca = a.captures.length, cb = b.captures.length;
+    if (ca !== cb) return cb - ca;
+    return 0;
+  });
+
+  if (maximizing) {
+    let maxEval = -Infinity;
+    for (const m of moves) {
+      const nb = aiApplyMove(b, m);
+      const ev = aiMinimax(nb, depth - 1, alpha, beta, false);
+      if (ev > maxEval) maxEval = ev;
+      if (ev > alpha) alpha = ev;
+      if (beta <= alpha) break;
+    }
+    return maxEval;
+  } else {
+    let minEval = Infinity;
+    for (const m of moves) {
+      const nb = aiApplyMove(b, m);
+      const ev = aiMinimax(nb, depth - 1, alpha, beta, true);
+      if (ev < minEval) minEval = ev;
+      if (ev < beta) beta = ev;
+      if (beta <= alpha) break;
+    }
+    return minEval;
+  }
+}
+
+// AI Get Best Move (Iterative Deepening)
+function aiGetBestMove(b, aiSide) {
+  const moves = aiGenerateMoves(b, aiSide);
+  if (moves.length === 0) return null;
+  if (moves.length === 1) return moves[0];
+
+  moves.sort((a, b) => b.captures.length - a.captures.length);
+
+  let bestMove = moves[0];
+  let bestScore = aiSide === 1 ? -Infinity : Infinity;
+
+  for (let d = 1; d <= AI_MAX_DEPTH; d++) {
+    let currentBest = null;
+    let currentScore = aiSide === 1 ? -Infinity : Infinity;
+
+    for (let i = moves.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [moves[i], moves[j]] = [moves[j], moves[i]];
+    }
+    moves.sort((a, b) => b.captures.length - a.captures.length);
+
+    for (const m of moves) {
+      const nb = aiApplyMove(b, m);
+      const score = aiMinimax(nb, d - 1, -Infinity, Infinity, aiSide === -1);
+      if (aiSide === 1) {
+        if (score > currentScore) {
+          currentScore = score;
+          currentBest = m;
+        }
+      } else {
+        if (score < currentScore) {
+          currentScore = score;
+          currentBest = m;
+        }
+      }
+    }
+
+    if (currentBest) {
+      bestMove = currentBest;
+      bestScore = currentScore;
+    }
+
+    if (aiSide === 1 && bestScore >= 90000) break;
+    if (aiSide === -1 && bestScore <= -90000) break;
+  }
+  return bestMove;
+}
+
+// Convert AI move format to our format
+function convertAIMoveToOurFormat(aiMove) {
+  if (!aiMove) return null;
   
   return {
-    from: { row: libraryMove.fromY, col: libraryMove.fromX },
-    to: { row: libraryMove.toY, col: libraryMove.toX },
-    jump: libraryMove.eatPositions && libraryMove.eatPositions.length > 0,
-    jumps: libraryMove.eatPositions ? libraryMove.eatPositions.map(pos => ({ row: pos.y, col: pos.x })) : [],
-    promotion: board[libraryMove.fromY][libraryMove.fromX] && 
-      ((board[libraryMove.fromY][libraryMove.fromX].color === 'red' && libraryMove.toY === 0) ||
-       (board[libraryMove.fromY][libraryMove.fromX].color === 'black' && libraryMove.toY === 7))
+    from: { row: aiMove.from.r, col: aiMove.from.c },
+    to: { row: aiMove.to.r, col: aiMove.to.c },
+    jump: aiMove.captures.length > 0,
+    jumps: aiMove.captures.map(cap => ({ row: cap.r, col: cap.c })),
+    promotion: aiMove.to.r === 0 || aiMove.to.r === 7
   };
 }
 
-// Execute AI move directly without animation
+// Execute AI move
 function executeAIMove(move) {
   const { from, to, jump, jumps, promotion } = move;
   
@@ -1028,24 +1283,67 @@ function executeAIMove(move) {
   // Handle promotion
   if (promotion) {
     const piece = board[to.row][to.col];
-    if (piece) {
-      piece.king = true;
-      console.log('[AI] Piece promoted to king');
+    if (piece && !piece.king) {
+      if ((piece.color === 'red' && to.row === 0) || (piece.color === 'black' && to.row === 7)) {
+        piece.king = true;
+        console.log('[AI] Piece promoted to king');
+      }
     }
   }
   
   // Update move history
-  moveHistory.push(move);
+  moveHistory.push(
+    `${capitalize(currentPlayer)}: (${from.row},${from.col}) → (${to.row},${to.col})${jump ? ' (jump)' : ''}${promotion ? ' (king)' : ''}`
+  );
   
   // Switch turns
-  currentPlayer = 'black';
+  currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
   isMyTurn = true;
   
   // Update UI
+  lastMove = { from, to };
   renderBoard();
   highlightLastMove();
   updateStatus();
   checkGameOver();
+}
+
+// Main AI move function
+function makeAIMove() {
+  if (!isAIMode || gameEnded || currentPlayer !== aiColor) {
+    console.log('[game.js] AI move check failed:', { isAIMode, gameEnded, currentPlayer, aiColor });
+    return;
+  }
+
+  console.log('[game.js] AI making move with unbeatable minimax AI');
+
+  // Convert our board to AI format
+  const aiBoard = convertBoardToAIFormat(board);
+  
+  // Determine AI side: red = 1, black = -1
+  const aiSide = aiColor === 'red' ? 1 : -1;
+  
+  // Get best move from AI
+  const aiMove = aiGetBestMove(aiBoard, aiSide);
+  
+  if (!aiMove) {
+    console.log('[game.js] AI has no moves');
+    checkGameOver();
+    return;
+  }
+
+  // Convert AI move to our format
+  const ourMove = convertAIMoveToOurFormat(aiMove);
+  
+  if (!ourMove) {
+    console.log('[game.js] Failed to convert AI move');
+    return;
+  }
+
+  console.log('[game.js] AI selected move:', ourMove);
+
+  // Execute the move
+  executeAIMove(ourMove);
 }
 
 // --- Video Chat Functionality (PeerJS) ---
