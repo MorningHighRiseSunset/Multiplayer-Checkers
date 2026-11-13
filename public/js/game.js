@@ -63,21 +63,26 @@ console.log('[game.js] API URL:', apiUrl);
 function startAIMode() {
   console.log('[game.js] Starting AI mode');
   isAIMode = true;
-  aiColor = 'red'; // AI plays as red
-  myColor = 'black'; // Player plays as black
+  aiColor = 'black'; // AI plays as black and goes first
+  myColor = 'red'; // Player plays as red
   myRole = 'Player 1';
   
   // Initialize the board
   initBoard();
   
-  // Set game state
+  // Set game state - black goes first
   gameStarted = true;
   gameEnded = false;
   currentPlayer = 'black';
-  isMyTurn = true;
+  isMyTurn = false; // AI goes first
   
   // Update UI
   updateStatus();
+  
+  // Trigger AI to make first move
+  setTimeout(() => {
+    makeAIMove();
+  }, 500);
   
   console.log('[game.js] AI mode started. Player:', myColor, 'AI:', aiColor);
 }
@@ -933,471 +938,179 @@ if (!startBoard) {
   initializeRoom();
 }
 
-// --- AI Logic - Unbeatable Minimax AI ---
-const AI_SIZE = 8;
-const AI_MAX_DEPTH = 8;
-const AI_QUIESCE_DEPTH = 6;
+// --- STRONG MINIMAX AI ---
+const AI_DEPTH = 6;
 
-// Convert our board format to AI format (0=empty, 1=red man, 2=red king, -1=black man, -2=black king)
-function convertBoardToAIFormat(board) {
-  const aiBoard = [];
-  for (let r = 0; r < AI_SIZE; r++) {
-    const row = [];
-    for (let c = 0; c < AI_SIZE; c++) {
+// Clone board for simulation
+function cloneBoard(board) {
+  return board.map(row => row.map(cell => cell ? { ...cell } : null));
+}
+
+// Evaluation function
+function evaluateBoard(board, color) {
+  let score = 0;
+  for (let r = 0; r < boardSize; r++) {
+    for (let c = 0; c < boardSize; c++) {
       const piece = board[r][c];
-      if (!piece) {
-        row.push(0);
-      } else if (piece.color === 'red') {
-        row.push(piece.king ? 2 : 1);
+      if (!piece) continue;
+      
+      let pieceValue = piece.king ? 500 : 100;
+      
+      // Position bonuses
+      if (piece.color === 'red') {
+        // Red wants to advance to row 0
+        pieceValue += (7 - r) * 2;
+        // Center control
+        if (c >= 2 && c <= 5) pieceValue += 3;
+        // Edge penalty
+        if (c === 0 || c === 7) pieceValue -= 5;
       } else {
-        row.push(piece.king ? -2 : -1);
+        // Black wants to advance to row 7
+        pieceValue += r * 2;
+        // Center control
+        if (c >= 2 && c <= 5) pieceValue += 3;
+        // Edge penalty
+        if (c === 0 || c === 7) pieceValue -= 5;
+      }
+      
+      if (piece.color === color) {
+        score += pieceValue;
+      } else {
+        score -= pieceValue;
       }
     }
-    aiBoard.push(row);
   }
-  return aiBoard;
+  return score;
 }
 
-// AI Helper functions
-const aiAbs = Math.abs;
-const aiSign = x => (x > 0 ? 1 : x < 0 ? -1 : 0);
-const aiInBounds = (r, c) => r >= 0 && r < AI_SIZE && c >= 0 && c < AI_SIZE;
-const aiIsDark = (r, c) => (r + c) % 2 === 1;
-
-function aiDirsFor(piece) {
-  if (aiAbs(piece) === 2) return [[-1,-1],[-1,1],[1,-1],[1,1]];
-  if (piece === 1) return [[-1,-1],[-1,1]];
-  return [[1,-1],[1,1]];
-}
-
-// AI Move Generation
-function aiGetCapturesFrom(b, startR, startC, piece) {
-  const results = [];
-  function search(r, c, captured, path) {
-    for (const [dr, dc] of aiDirsFor(piece)) {
-      const mr = r + dr, mc = c + dc;
-      const lr = r + 2 * dr, lc = c + 2 * dc;
-      if (!aiInBounds(lr, lc) || !aiIsDark(lr, lc) || b[lr][lc] !== 0) continue;
-      const mid = b[mr][mc];
-      if (aiSign(mid) !== -aiSign(piece)) continue;
-      if (captured.some(p => p.r === mr && p.c === mc)) continue;
-
-      const savedFrom = b[r][c], savedMid = b[mr][mc];
-      b[r][c] = 0;
-      b[mr][mc] = 0;
-      b[lr][lc] = piece;
-
-      const newCap = captured.concat({ r: mr, c: mc });
-      const newPath = path.concat({ r: lr, c: lc });
-      const before = results.length;
-      search(lr, lc, newCap, newPath);
-      if (results.length === before) {
-        results.push({
-          from: { r: startR, c: startC },
-          to: { r: lr, c: lc },
-          captures: newCap,
-          path: newPath
-        });
-      }
-
-      b[r][c] = savedFrom;
-      b[mr][mc] = savedMid;
-      b[lr][lc] = 0;
-    }
-  }
-  search(startR, startC, [], []);
-  return results;
-}
-
-function aiGenerateMoves(b, side, onlyFrom = null) {
-  const simple = [];
-  const jumps = [];
-
-  for (let r = 0; r < AI_SIZE; r++) {
-    for (let c = 0; c < AI_SIZE; c++) {
-      if (aiSign(b[r][c]) !== side) continue;
-      if (onlyFrom && (r !== onlyFrom.r || c !== onlyFrom.c)) continue;
-      const piece = b[r][c];
-
-      jumps.push(...aiGetCapturesFrom(b, r, c, piece));
-
-      for (const [dr, dc] of aiDirsFor(piece)) {
-        const nr = r + dr, nc = c + dc;
-        if (aiInBounds(nr, nc) && b[nr][nc] === 0 && aiIsDark(nr, nc)) {
-          simple.push({
-            from: { r, c },
-            to: { r: nr, c: nc },
-            captures: [],
-            path: [{ r: nr, c: nc }]
-          });
+// Get all moves for a color
+function getAllMoves(board, color) {
+  let moves = [];
+  let hasJumps = false;
+  
+  for (let r = 0; r < boardSize; r++) {
+    for (let c = 0; c < boardSize; c++) {
+      const piece = board[r][c];
+      if (piece && piece.color === color) {
+        const pieceMoves = getValidMovesForPiece(board, r, c, piece);
+        for (const move of pieceMoves) {
+          if (move.jump) hasJumps = true;
+          moves.push({ from: { row: r, col: c }, ...move });
         }
       }
     }
   }
-  return jumps.length > 0 ? jumps : simple;
-}
-
-function aiApplyMove(b, move) {
-  const nb = b.map(row => row.slice());
-  const piece = nb[move.from.r][move.from.c];
-  nb[move.from.r][move.from.c] = 0;
-  for (const cap of move.captures) nb[cap.r][cap.c] = 0;
-
-  let final = piece;
-  if (aiAbs(piece) === 1) {
-    if (piece === 1 && move.to.r === 0) final = 2;
-    if (piece === -1 && move.to.r === 7) final = -2;
+  
+  // Mandatory jumps
+  if (hasJumps) {
+    moves = moves.filter(m => m.jump);
   }
-  nb[move.to.r][move.to.c] = final;
-  return nb;
+  
+  return moves;
 }
 
-function aiCanContinueAfter(move, originalPiece) {
-  if (aiAbs(originalPiece) === 2) return true;
-  if (originalPiece === 1 && move.to.r === 0) return false;
-  if (originalPiece === -1 && move.to.r === 7) return false;
-  return true;
-}
-
-// AI Threat Detection - Check if a piece can be captured
-function aiIsUnderThreat(b, r, c, side) {
-  // In checkers, a piece is under threat if an opponent is diagonally adjacent
-  // and the square beyond is empty (jump capture)
-  const opponent = -side;
-
-  for (const [dr, dc] of [[-1,-1],[-1,1],[1,-1],[1,1]]) {
-    const adjR = r + dr;
-    const adjC = c + dc;
-    const jumpR = r + 2 * dr;
-    const jumpC = c + 2 * dc;
-
-    // Check if opponent is diagonally adjacent
-    if (aiInBounds(adjR, adjC) && aiSign(b[adjR][adjC]) === opponent) {
-      // Check if jump destination is empty and is a dark square
-      if (aiInBounds(jumpR, jumpC) && b[jumpR][jumpC] === 0 && aiIsDark(jumpR, jumpC)) {
-        return true;
-      }
+// Get valid moves for a specific piece
+function getValidMovesForPiece(board, row, col, piece) {
+  const directions = [];
+  if (piece.color === 'red' || piece.king) directions.push([-1, -1], [-1, 1]);
+  if (piece.color === 'black' || piece.king) directions.push([1, -1], [1, 1]);
+  
+  let moves = [];
+  for (const [dr, dc] of directions) {
+    const r1 = row + dr, c1 = col + dc;
+    const r2 = row + dr * 2, c2 = col + dc * 2;
+    
+    // Regular move
+    if (r1 >= 0 && r1 < boardSize && c1 >= 0 && c1 < boardSize && !board[r1][c1]) {
+      moves.push({ row: r1, col: c1, jump: false });
+    }
+    
+    // Jump
+    if (r2 >= 0 && r2 < boardSize && c2 >= 0 && c2 < boardSize && 
+        board[r1][c1] && board[r1][c1].color !== piece.color && !board[r2][c2]) {
+      moves.push({ row: r2, col: c2, jump: true, jumped: { row: r1, col: c1 } });
     }
   }
-  return false;
+  
+  return moves;
 }
 
-// AI Evaluation
-function aiEvaluate(b) {
-  let score = 0;
-  let redMen = 0, redKings = 0, blackMen = 0, blackKings = 0;
-  let redThreatened = 0, blackThreatened = 0;
-
-  const manPST = [
-    [0,0,0,0,0,0,0,0],
-    [25,25,25,25,25,25,25,25],
-    [16,16,18,18,18,18,16,16],
-    [10,10,12,14,14,12,10,10],
-    [6,6,8,10,10,8,6,6],
-    [3,3,4,5,5,4,3,3],
-    [1,1,1,2,2,1,1,1],
-    [0,0,0,0,0,0,0,0]
-  ];
-  const kingPST = [
-    [0,0,2,2,2,2,0,0],
-    [0,5,8,8,8,8,5,0],
-    [2,8,12,12,12,12,8,2],
-    [2,8,12,14,14,12,8,2],
-    [2,8,12,14,14,12,8,2],
-    [2,8,12,12,12,12,8,2],
-    [0,5,8,8,8,8,5,0],
-    [0,0,2,2,2,2,0,0]
-  ];
-
-  for (let r = 0; r < AI_SIZE; r++) {
-    for (let c = 0; c < AI_SIZE; c++) {
-      const p = b[r][c];
-      if (p === 0) continue;
-      const isRed = p > 0;
-      const isKing = aiAbs(p) === 2;
-      const side = isRed ? 1 : -1;
-
-      let val = isKing ? 450 : 100;
-
-      if (isKing) {
-        val += kingPST[r][c];
-      } else {
-        const pst = isRed ? manPST[r][c] : manPST[7 - r][c];
-        val += pst;
-      }
-
-      if (c === 0 || c === 7) val -= 4;
-
-      // Check if piece is under threat
-      if (aiIsUnderThreat(b, r, c, side)) {
-        if (isRed) redThreatened++; else blackThreatened++;
-        // Heavy penalty for threatened pieces to discourage unnecessary sacrifices
-        val -= isKing ? 60 : 30;
-      }
-
-      if (isRed) {
-        score += val;
-        if (isKing) redKings++; else redMen++;
-      } else {
-        score -= val;
-        if (isKing) blackKings++; else blackMen++;
-      }
-    }
+// Apply move to board
+function applyMoveToBoard(board, move) {
+  const newBoard = cloneBoard(board);
+  const piece = newBoard[move.from.row][move.from.col];
+  newBoard[move.to.row][move.to.col] = piece;
+  newBoard[move.from.row][move.from.col] = null;
+  
+  // Handle promotion
+  if ((piece.color === 'red' && move.to.row === 0) || (piece.color === 'black' && move.to.row === 7)) {
+    piece.king = true;
   }
-
-  // Mobility (increased weight to prefer safe positions)
-  const redMob = aiGenerateMoves(b, 1).length;
-  const blackMob = aiGenerateMoves(b, -1).length;
-  score += (redMob - blackMob) * 8;
-
-  score += (redKings - blackKings) * 30;
-
-  // Penalty for having more threatened pieces
-  score += (blackThreatened - redThreatened) * 25;
-
-  if (redMen + redKings === 0) return -100000;
-  if (blackMen + blackKings === 0) return 100000;
-  if (redMob === 0) return -99999;
-  if (blackMob === 0) return 99999;
-
-  return score;
+  
+  // Handle jump
+  if (move.jump && move.jumped) {
+    newBoard[move.jumped.row][move.jumped.col] = null;
+  }
+  
+  return newBoard;
 }
 
-// AI Quiescence
-function aiQuiescence(b, alpha, beta, maximizing, qDepth) {
-  const standPat = aiEvaluate(b);
-
-  if (maximizing) {
-    if (standPat >= beta) return beta;
-    if (standPat > alpha) alpha = standPat;
-  } else {
-    if (standPat <= alpha) return alpha;
-    if (standPat < beta) beta = standPat;
-  }
-
-  if (qDepth <= 0) return standPat;
-
-  const side = maximizing ? 1 : -1;
-  const moves = aiGenerateMoves(b, side).filter(m => m.captures.length > 0);
-  moves.sort((a, b) => b.captures.length - a.captures.length);
-
-  for (const m of moves) {
-    const nb = aiApplyMove(b, m);
-    const score = aiQuiescence(nb, alpha, beta, !maximizing, qDepth - 1);
-    if (maximizing) {
-      if (score >= beta) return beta;
-      if (score > alpha) alpha = score;
-    } else {
-      if (score <= alpha) return alpha;
-      if (score < beta) beta = score;
-    }
-  }
-  return maximizing ? alpha : beta;
-}
-
-// AI Minimax
-function aiMinimax(b, depth, alpha, beta, maximizing) {
+// Minimax with alpha-beta pruning
+function minimax(board, depth, alpha, beta, maximizing, color) {
+  const opponent = color === 'red' ? 'black' : 'red';
+  
   if (depth === 0) {
-    return aiQuiescence(b, alpha, beta, maximizing, AI_QUIESCE_DEPTH);
+    return evaluateBoard(board, color);
   }
-
-  const side = maximizing ? 1 : -1;
-  let moves = aiGenerateMoves(b, side);
+  
+  const moves = getAllMoves(board, maximizing ? color : opponent);
+  
   if (moves.length === 0) {
-    return maximizing ? -100000 + depth : 100000 - depth;
+    return maximizing ? -10000 : 10000;
   }
-
-  moves.sort((a, b) => {
-    const ca = a.captures.length, cb = b.captures.length;
-    // Non-captures are evaluated first to avoid unnecessary sacrifices
-    if (ca === 0 && cb > 0) return -1;
-    if (cb === 0 && ca > 0) return 1;
-    // If both are captures or both are non-captures, use normal ordering
-    if (ca !== cb) return cb - ca;
-    return 0;
-  });
-
+  
   if (maximizing) {
     let maxEval = -Infinity;
-    for (const m of moves) {
-      const nb = aiApplyMove(b, m);
-      const ev = aiMinimax(nb, depth - 1, alpha, beta, false);
-      if (ev > maxEval) maxEval = ev;
-      if (ev > alpha) alpha = ev;
+    for (const move of moves) {
+      const newBoard = applyMoveToBoard(board, move);
+      const eval = minimax(newBoard, depth - 1, alpha, beta, false, color);
+      maxEval = Math.max(maxEval, eval);
+      alpha = Math.max(alpha, eval);
       if (beta <= alpha) break;
     }
     return maxEval;
   } else {
     let minEval = Infinity;
-    for (const m of moves) {
-      const nb = aiApplyMove(b, m);
-      const ev = aiMinimax(nb, depth - 1, alpha, beta, true);
-      if (ev < minEval) minEval = ev;
-      if (ev < beta) beta = ev;
+    for (const move of moves) {
+      const newBoard = applyMoveToBoard(board, move);
+      const eval = minimax(newBoard, depth - 1, alpha, beta, true, color);
+      minEval = Math.min(minEval, eval);
+      beta = Math.min(beta, eval);
       if (beta <= alpha) break;
     }
     return minEval;
   }
 }
 
-// AI Get Best Move (Iterative Deepening)
-function aiGetBestMove(b, aiSide) {
-  const moves = aiGenerateMoves(b, aiSide);
+// Get best move for AI
+function getBestAIMove(board, color) {
+  const moves = getAllMoves(board, color);
   if (moves.length === 0) return null;
   if (moves.length === 1) return moves[0];
-
-  moves.sort((a, b) => {
-    const ca = a.captures.length, cb = b.captures.length;
-    // Non-captures are evaluated first to avoid unnecessary sacrifices
-    if (ca === 0 && cb > 0) return -1;
-    if (cb === 0 && ca > 0) return 1;
-    // If both are captures or both are non-captures, use normal ordering
-    if (ca !== cb) return cb - ca;
-    return 0;
-  });
-
-  let bestMove = moves[0];
-  let bestScore = aiSide === 1 ? -Infinity : Infinity;
-
-  for (let d = 1; d <= AI_MAX_DEPTH; d++) {
-    let currentBest = null;
-    let currentScore = aiSide === 1 ? -Infinity : Infinity;
-
-    for (let i = moves.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [moves[i], moves[j]] = [moves[j], moves[i]];
+  
+  let bestMove = null;
+  let bestScore = -Infinity;
+  
+  for (const move of moves) {
+    const newBoard = applyMoveToBoard(board, move);
+    const score = minimax(newBoard, AI_DEPTH - 1, -Infinity, Infinity, false, color);
+    if (score > bestScore) {
+      bestScore = score;
+      bestMove = move;
     }
-    moves.sort((a, b) => {
-      const ca = a.captures.length, cb = b.captures.length;
-      // Non-captures are evaluated first to avoid unnecessary sacrifices
-      if (ca === 0 && cb > 0) return -1;
-      if (cb === 0 && ca > 0) return 1;
-      // If both are captures or both are non-captures, use normal ordering
-      if (ca !== cb) return cb - ca;
-      return 0;
-    });
-
-    for (const m of moves) {
-      const nb = aiApplyMove(b, m);
-      const score = aiMinimax(nb, d - 1, -Infinity, Infinity, aiSide === -1);
-      if (aiSide === 1) {
-        if (score > currentScore) {
-          currentScore = score;
-          currentBest = m;
-        }
-      } else {
-        if (score < currentScore) {
-          currentScore = score;
-          currentBest = m;
-        }
-      }
-    }
-
-    if (currentBest) {
-      bestMove = currentBest;
-      bestScore = currentScore;
-    }
-
-    if (aiSide === 1 && bestScore >= 90000) break;
-    if (aiSide === -1 && bestScore <= -90000) break;
   }
+  
   return bestMove;
-}
-
-// Convert AI move format to our format
-function convertAIMoveToOurFormat(aiMove) {
-  if (!aiMove) return null;
-  
-  // Handle multi-jump sequences by converting path to jumps
-  const jumps = aiMove.captures.map(cap => ({ row: cap.r, col: cap.c }));
-  
-  return {
-    from: { row: aiMove.from.r, col: aiMove.from.c },
-    to: { row: aiMove.to.r, col: aiMove.to.c },
-    jump: aiMove.captures.length > 0,
-    jumps: jumps,
-    jumped: jumps.length > 0 ? jumps[0] : null,
-    promotion: aiMove.to.r === 0 || aiMove.to.r === 7
-  };
-}
-
-// Execute AI move with animation - handles multi-jumps
-function executeAIMove(move) {
-  const { from, to, jump, jumps, promotion } = move;
-  
-  console.log('[AI] Executing move:', move);
-  
-  // For multi-jumps, we need to execute each jump in sequence
-  if (jump && jumps.length > 1) {
-    // Multi-jump sequence
-    let currentFrom = from;
-    let jumpIndex = 0;
-    
-    function executeNextJump() {
-      if (jumpIndex >= jumps.length) {
-        // All jumps done, finish up
-        finishAIMove();
-        return;
-      }
-      
-      const jumpPos = jumps[jumpIndex];
-      // Calculate to position based on from and jumped position
-      const dr = jumpPos.row - currentFrom.row;
-      const dc = jumpPos.col - currentFrom.col;
-      const currentTo = { row: currentFrom.row + dr * 2, col: currentFrom.col + dc * 2 };
-      
-      const moveObj = {
-        jump: true,
-        jumped: jumpPos
-      };
-      
-      performMoveWithAnimation(currentFrom, currentTo, moveObj, () => {
-        currentFrom = currentTo;
-        jumpIndex++;
-        executeNextJump();
-      });
-    }
-    
-    executeNextJump();
-  } else {
-    // Single move or single jump
-    const moveObj = {
-      jump: jump,
-      jumped: jump && jumps.length > 0 ? jumps[0] : null
-    };
-    
-    performMoveWithAnimation(from, to, moveObj, () => {
-      finishAIMove();
-    });
-  }
-  
-  function finishAIMove() {
-    // Handle promotion after all animations
-    if (promotion) {
-      const piece = board[to.row][to.col];
-      if (piece && !piece.king) {
-        if ((piece.color === 'red' && to.row === 0) || (piece.color === 'black' && to.row === 7)) {
-          piece.king = true;
-          console.log('[AI] Piece promoted to king');
-        }
-      }
-    }
-    
-    // Update move history
-    moveHistory.push(
-      `${capitalize(currentPlayer)}: (${from.row},${from.col}) → (${to.row},${to.col})${jump ? ' (jump)' : ''}${promotion ? ' (king)' : ''}`
-    );
-    
-    // Switch turns
-    currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
-    isMyTurn = true;
-    
-    // Update UI
-    renderBoard();
-    highlightLastMove();
-    updateStatus();
-    checkGameOver();
-  }
 }
 
 // Main AI move function
@@ -1407,16 +1120,9 @@ function makeAIMove() {
     return;
   }
 
-  console.log('[game.js] AI making move with unbeatable minimax AI');
-
-  // Convert our board to AI format
-  const aiBoard = convertBoardToAIFormat(board);
+  console.log('[game.js] AI making move with minimax depth', AI_DEPTH);
   
-  // Determine AI side: red = 1, black = -1
-  const aiSide = aiColor === 'red' ? 1 : -1;
-  
-  // Get best move from AI
-  const aiMove = aiGetBestMove(aiBoard, aiSide);
+  const aiMove = getBestAIMove(board, aiColor);
   
   if (!aiMove) {
     console.log('[game.js] AI has no moves');
@@ -1424,18 +1130,26 @@ function makeAIMove() {
     return;
   }
 
-  // Convert AI move to our format
-  const ourMove = convertAIMoveToOurFormat(aiMove);
+  console.log('[game.js] AI selected move:', aiMove);
+
+  // Execute the move with animation
+  const moveObj = {
+    jump: aiMove.jump,
+    jumped: aiMove.jumped
+  };
   
-  if (!ourMove) {
-    console.log('[game.js] Failed to convert AI move');
-    return;
-  }
-
-  console.log('[game.js] AI selected move:', ourMove);
-
-  // Execute the move
-  executeAIMove(ourMove);
+  lastMove = { from: aiMove.from, to: { row: aiMove.row, col: aiMove.col } };
+  
+  performMoveWithAnimation(aiMove.from, { row: aiMove.row, col: aiMove.col }, moveObj, () => {
+    // Switch turns
+    currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
+    isMyTurn = true;
+    
+    renderBoard();
+    highlightLastMove();
+    updateStatus();
+    checkGameOver();
+  });
 }
 
 // --- Video Chat Functionality (PeerJS) ---
