@@ -1308,60 +1308,96 @@ function aiGetBestMove(b, aiSide) {
 function convertAIMoveToOurFormat(aiMove) {
   if (!aiMove) return null;
   
+  // Handle multi-jump sequences by converting path to jumps
+  const jumps = aiMove.captures.map(cap => ({ row: cap.r, col: cap.c }));
+  
   return {
     from: { row: aiMove.from.r, col: aiMove.from.c },
     to: { row: aiMove.to.r, col: aiMove.to.c },
     jump: aiMove.captures.length > 0,
-    jumps: aiMove.captures.map(cap => ({ row: cap.r, col: cap.c })),
+    jumps: jumps,
+    jumped: jumps.length > 0 ? jumps[0] : null,
     promotion: aiMove.to.r === 0 || aiMove.to.r === 7
   };
 }
 
-// Execute AI move
+// Execute AI move with animation - handles multi-jumps
 function executeAIMove(move) {
   const { from, to, jump, jumps, promotion } = move;
   
   console.log('[AI] Executing move:', move);
   
-  // Move the piece
-  board[to.row][to.col] = board[from.row][from.col];
-  board[from.row][from.col] = null;
-  
-  // Handle jumps - remove captured pieces
-  if (jump && jumps && jumps.length > 0) {
-    console.log('[AI] Capturing pieces:', jumps);
-    for (const jumpPos of jumps) {
-      console.log('[AI] Removing piece at:', jumpPos);
-      board[jumpPos.row][jumpPos.col] = null;
+  // For multi-jumps, we need to execute each jump in sequence
+  if (jump && jumps.length > 1) {
+    // Multi-jump sequence
+    let currentFrom = from;
+    let jumpIndex = 0;
+    
+    function executeNextJump() {
+      if (jumpIndex >= jumps.length) {
+        // All jumps done, finish up
+        finishAIMove();
+        return;
+      }
+      
+      const jumpPos = jumps[jumpIndex];
+      // Calculate to position based on from and jumped position
+      const dr = jumpPos.row - currentFrom.row;
+      const dc = jumpPos.col - currentFrom.col;
+      const currentTo = { row: currentFrom.row + dr * 2, col: currentFrom.col + dc * 2 };
+      
+      const moveObj = {
+        jump: true,
+        jumped: jumpPos
+      };
+      
+      performMoveWithAnimation(currentFrom, currentTo, moveObj, () => {
+        currentFrom = currentTo;
+        jumpIndex++;
+        executeNextJump();
+      });
     }
+    
+    executeNextJump();
+  } else {
+    // Single move or single jump
+    const moveObj = {
+      jump: jump,
+      jumped: jump && jumps.length > 0 ? jumps[0] : null
+    };
+    
+    performMoveWithAnimation(from, to, moveObj, () => {
+      finishAIMove();
+    });
   }
   
-  // Handle promotion
-  if (promotion) {
-    const piece = board[to.row][to.col];
-    if (piece && !piece.king) {
-      if ((piece.color === 'red' && to.row === 0) || (piece.color === 'black' && to.row === 7)) {
-        piece.king = true;
-        console.log('[AI] Piece promoted to king');
+  function finishAIMove() {
+    // Handle promotion after all animations
+    if (promotion) {
+      const piece = board[to.row][to.col];
+      if (piece && !piece.king) {
+        if ((piece.color === 'red' && to.row === 0) || (piece.color === 'black' && to.row === 7)) {
+          piece.king = true;
+          console.log('[AI] Piece promoted to king');
+        }
       }
     }
+    
+    // Update move history
+    moveHistory.push(
+      `${capitalize(currentPlayer)}: (${from.row},${from.col}) → (${to.row},${to.col})${jump ? ' (jump)' : ''}${promotion ? ' (king)' : ''}`
+    );
+    
+    // Switch turns
+    currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
+    isMyTurn = true;
+    
+    // Update UI
+    renderBoard();
+    highlightLastMove();
+    updateStatus();
+    checkGameOver();
   }
-  
-  // Update move history
-  moveHistory.push(
-    `${capitalize(currentPlayer)}: (${from.row},${from.col}) → (${to.row},${to.col})${jump ? ' (jump)' : ''}${promotion ? ' (king)' : ''}`
-  );
-  
-  // Switch turns
-  currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
-  isMyTurn = true;
-  
-  // Update UI
-  lastMove = { from, to };
-  renderBoard();
-  highlightLastMove();
-  updateStatus();
-  checkGameOver();
 }
 
 // Main AI move function
