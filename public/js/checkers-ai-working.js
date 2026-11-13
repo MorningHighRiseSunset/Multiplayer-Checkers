@@ -174,16 +174,90 @@ class MachinePlayer {
     }
   }
 
+  _isUnderThreat(board, x, y, color) {
+    // Check if a piece at (x,y) can be captured by opponent
+    const opp = color === 'white' ? 'black' : 'white';
+    const dirs = [[-1,-1],[-1,1],[1,-1],[1,1]];
+
+    for (const [dx, dy] of dirs) {
+      const adjX = x + dx;
+      const adjY = y + dy;
+      const jumpX = x + 2 * dx;
+      const jumpY = y + 2 * dy;
+
+      // Check if opponent is diagonally adjacent
+      if (adjX >= 0 && adjX < 8 && adjY >= 0 && adjY < 8) {
+        const adjCell = board.get(adjX, adjY);
+        if (adjCell && adjCell.color === opp) {
+          // Check if jump destination is empty
+          if (jumpX >= 0 && jumpX < 8 && jumpY >= 0 && jumpY < 8) {
+            const jumpCell = board.get(jumpX, jumpY);
+            if (!jumpCell) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   _heuristic(board, machineColor) {
     let score = 0;
+    let threatenedCount = 0;
+    let oppThreatenedCount = 0;
+    const opp = machineColor === 'white' ? 'black' : 'white';
+
+    // Piece-square tables for better positional evaluation
+    const manPST = [
+      [0, 4, 0, 4, 0, 4, 0, 4],
+      [4, 0, 3, 0, 3, 0, 3, 0],
+      [0, 3, 0, 2, 0, 2, 0, 3],
+      [4, 0, 2, 0, 1, 0, 2, 0],
+      [0, 2, 0, 1, 0, 1, 0, 2],
+      [3, 0, 2, 0, 2, 0, 3, 0],
+      [0, 3, 0, 3, 0, 3, 0, 3],
+      [4, 0, 4, 0, 4, 0, 4, 0]
+    ];
+
     for (let y = 0; y < 8; y++) {
       for (let x = 0; x < 8; x++) {
         const cell = board.get(x, y);
         if (!cell) continue;
-        const val = cell.isQueen ? 3 : 1;
-        score += cell.color === machineColor ? val : -val;
+
+        const isMachine = cell.color === machineColor;
+        const pieceVal = cell.isQueen ? 50 : 10;
+
+        // Add positional bonus
+        let posBonus = 0;
+        if (!cell.isQueen) {
+          // Orient PST based on color
+          const pstY = isMachine ? y : 7 - y;
+          posBonus = manPST[pstY][x];
+        }
+
+        // Check if piece is under threat
+        const isThreatened = this._isUnderThreat(board, x, y, cell.color);
+        if (isThreatened) {
+          if (isMachine) threatenedCount++;
+          else oppThreatenedCount++;
+          // Heavy penalty for threatened pieces
+          posBonus -= cell.isQueen ? 15 : 8;
+        }
+
+        const totalVal = pieceVal + posBonus;
+        score += isMachine ? totalVal : -totalVal;
       }
     }
+
+    // Mobility bonus
+    const machineMoves = LogicalMoveEngine.getAllMoves(board, machineColor).length;
+    const oppMoves = LogicalMoveEngine.getAllMoves(board, opp).length;
+    score += (machineMoves - oppMoves) * 2;
+
+    // Penalty for having more threatened pieces
+    score += (oppThreatenedCount - threatenedCount) * 5;
+
     return score;
   }
 }
