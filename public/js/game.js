@@ -966,9 +966,29 @@ function isPieceUnderAttack(board, row, col, piece) {
   return false;
 }
 
-// Evaluation function with safety checks
+// Count pieces that can be captured
+function countCapturablePieces(board, color) {
+  let count = 0;
+  for (let r = 0; r < boardSize; r++) {
+    for (let c = 0; c < boardSize; c++) {
+      const piece = board[r][c];
+      if (piece && piece.color === color && isPieceUnderAttack(board, r, c, piece)) {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+// Evaluation function with strict safety checks
 function evaluateBoard(board, color) {
   let score = 0;
+  const opponent = color === 'red' ? 'black' : 'red';
+  
+  // Count capturable pieces for both sides
+  const myCapturable = countCapturablePieces(board, color);
+  const opponentCapturable = countCapturablePieces(board, opponent);
+  
   for (let r = 0; r < boardSize; r++) {
     for (let c = 0; c < boardSize; c++) {
       const piece = board[r][c];
@@ -993,9 +1013,20 @@ function evaluateBoard(board, color) {
         if (c === 0 || c === 7) pieceValue -= 5;
       }
       
-      // Safety check - HUGE penalty for pieces under attack
+      // STRICT safety check - MASSIVE penalty for pieces under attack
+      // Only allow if we can capture more of opponent's pieces
       if (isPieceUnderAttack(board, r, c, piece)) {
-        pieceValue -= 150; // Make this significant
+        if (piece.color === color) {
+          // My piece under attack - only allow if we can capture more opponent pieces
+          if (opponentCapturable > myCapturable) {
+            pieceValue -= 1000; // Still penalty but acceptable if net gain
+          } else {
+            pieceValue -= 2000; // UNACCEPTABLE - massive penalty
+          }
+        } else {
+          // Opponent piece under attack - bonus
+          pieceValue += 50;
+        }
       }
       
       if (piece.color === color) {
@@ -1005,6 +1036,12 @@ function evaluateBoard(board, color) {
       }
     }
   }
+  
+  // Additional penalty if we're losing the piece trade
+  if (myCapturable > opponentCapturable) {
+    score -= (myCapturable - opponentCapturable) * 200;
+  }
+  
   return score;
 }
 
