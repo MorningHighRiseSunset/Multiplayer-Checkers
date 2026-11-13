@@ -995,7 +995,12 @@ function getAllMoves(board, color) {
         const pieceMoves = getValidMovesForPiece(board, r, c, piece);
         for (const move of pieceMoves) {
           if (move.jump) hasJumps = true;
-          moves.push({ from: { row: r, col: c }, ...move });
+          moves.push({ 
+            from: { row: r, col: c }, 
+            to: { row: move.row, col: move.col },
+            jump: move.jump,
+            jumped: move.jumped
+          });
         }
       }
     }
@@ -1138,9 +1143,9 @@ function makeAIMove() {
     jumped: aiMove.jumped
   };
   
-  lastMove = { from: aiMove.from, to: { row: aiMove.row, col: aiMove.col } };
+  lastMove = { from: aiMove.from, to: aiMove.to };
   
-  performMoveWithAnimation(aiMove.from, { row: aiMove.row, col: aiMove.col }, moveObj, () => {
+  performMoveWithAnimation(aiMove.from, aiMove.to, moveObj, () => {
     // Switch turns
     currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
     isMyTurn = true;
