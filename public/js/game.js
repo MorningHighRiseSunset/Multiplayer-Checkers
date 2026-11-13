@@ -946,7 +946,27 @@ function cloneBoard(board) {
   return board.map(row => row.map(cell => cell ? { ...cell } : null));
 }
 
-// Evaluation function
+// Check if a piece is under attack
+function isPieceUnderAttack(board, row, col, piece) {
+  const opponent = piece.color === 'red' ? 'black' : 'red';
+  
+  for (let r = 0; r < boardSize; r++) {
+    for (let c = 0; c < boardSize; c++) {
+      const enemy = board[r][c];
+      if (enemy && enemy.color === opponent) {
+        const moves = getValidMovesForPiece(board, r, c, enemy);
+        for (const move of moves) {
+          if (move.jump && move.row === row && move.col === col) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// Evaluation function with safety checks
 function evaluateBoard(board, color) {
   let score = 0;
   for (let r = 0; r < boardSize; r++) {
@@ -971,6 +991,11 @@ function evaluateBoard(board, color) {
         if (c >= 2 && c <= 5) pieceValue += 3;
         // Edge penalty
         if (c === 0 || c === 7) pieceValue -= 5;
+      }
+      
+      // Safety check - HUGE penalty for pieces under attack
+      if (isPieceUnderAttack(board, r, c, piece)) {
+        pieceValue -= 150; // Make this significant
       }
       
       if (piece.color === color) {
