@@ -1059,10 +1059,34 @@ function aiCanContinueAfter(move, originalPiece) {
   return true;
 }
 
+// AI Threat Detection - Check if a piece can be captured
+function aiIsUnderThreat(b, r, c, side) {
+  // In checkers, a piece is under threat if an opponent is diagonally adjacent
+  // and the square beyond is empty (jump capture)
+  const opponent = -side;
+
+  for (const [dr, dc] of [[-1,-1],[-1,1],[1,-1],[1,1]]) {
+    const adjR = r + dr;
+    const adjC = c + dc;
+    const jumpR = r + 2 * dr;
+    const jumpC = c + 2 * dc;
+
+    // Check if opponent is diagonally adjacent
+    if (aiInBounds(adjR, adjC) && aiSign(b[adjR][adjC]) === opponent) {
+      // Check if jump destination is empty and is a dark square
+      if (aiInBounds(jumpR, jumpC) && b[jumpR][jumpC] === 0 && aiIsDark(jumpR, jumpC)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 // AI Evaluation
 function aiEvaluate(b) {
   let score = 0;
   let redMen = 0, redKings = 0, blackMen = 0, blackKings = 0;
+  let redThreatened = 0, blackThreatened = 0;
 
   const manPST = [
     [0,0,0,0,0,0,0,0],
@@ -1091,6 +1115,7 @@ function aiEvaluate(b) {
       if (p === 0) continue;
       const isRed = p > 0;
       const isKing = aiAbs(p) === 2;
+      const side = isRed ? 1 : -1;
 
       let val = isKing ? 450 : 100;
 
@@ -1103,6 +1128,13 @@ function aiEvaluate(b) {
 
       if (c === 0 || c === 7) val -= 4;
 
+      // Check if piece is under threat
+      if (aiIsUnderThreat(b, r, c, side)) {
+        if (isRed) redThreatened++; else blackThreatened++;
+        // Heavy penalty for threatened pieces to discourage unnecessary sacrifices
+        val -= isKing ? 60 : 30;
+      }
+
       if (isRed) {
         score += val;
         if (isKing) redKings++; else redMen++;
@@ -1113,11 +1145,15 @@ function aiEvaluate(b) {
     }
   }
 
+  // Mobility (increased weight to prefer safe positions)
   const redMob = aiGenerateMoves(b, 1).length;
   const blackMob = aiGenerateMoves(b, -1).length;
-  score += (redMob - blackMob) * 3;
+  score += (redMob - blackMob) * 8;
 
   score += (redKings - blackKings) * 30;
+
+  // Penalty for having more threatened pieces
+  score += (blackThreatened - redThreatened) * 25;
 
   if (redMen + redKings === 0) return -100000;
   if (blackMen + blackKings === 0) return 100000;
@@ -1173,6 +1209,10 @@ function aiMinimax(b, depth, alpha, beta, maximizing) {
 
   moves.sort((a, b) => {
     const ca = a.captures.length, cb = b.captures.length;
+    // Non-captures are evaluated first to avoid unnecessary sacrifices
+    if (ca === 0 && cb > 0) return -1;
+    if (cb === 0 && ca > 0) return 1;
+    // If both are captures or both are non-captures, use normal ordering
     if (ca !== cb) return cb - ca;
     return 0;
   });
@@ -1206,7 +1246,15 @@ function aiGetBestMove(b, aiSide) {
   if (moves.length === 0) return null;
   if (moves.length === 1) return moves[0];
 
-  moves.sort((a, b) => b.captures.length - a.captures.length);
+  moves.sort((a, b) => {
+    const ca = a.captures.length, cb = b.captures.length;
+    // Non-captures are evaluated first to avoid unnecessary sacrifices
+    if (ca === 0 && cb > 0) return -1;
+    if (cb === 0 && ca > 0) return 1;
+    // If both are captures or both are non-captures, use normal ordering
+    if (ca !== cb) return cb - ca;
+    return 0;
+  });
 
   let bestMove = moves[0];
   let bestScore = aiSide === 1 ? -Infinity : Infinity;
@@ -1219,7 +1267,15 @@ function aiGetBestMove(b, aiSide) {
       const j = Math.floor(Math.random() * (i + 1));
       [moves[i], moves[j]] = [moves[j], moves[i]];
     }
-    moves.sort((a, b) => b.captures.length - a.captures.length);
+    moves.sort((a, b) => {
+      const ca = a.captures.length, cb = b.captures.length;
+      // Non-captures are evaluated first to avoid unnecessary sacrifices
+      if (ca === 0 && cb > 0) return -1;
+      if (cb === 0 && ca > 0) return 1;
+      // If both are captures or both are non-captures, use normal ordering
+      if (ca !== cb) return cb - ca;
+      return 0;
+    });
 
     for (const m of moves) {
       const nb = aiApplyMove(b, m);
