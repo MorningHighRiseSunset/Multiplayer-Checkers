@@ -1137,15 +1137,23 @@ function makeAIMove() {
 
   console.log('[game.js] AI selected move:', aiMove);
 
-  // Execute the move with animation
+  // Execute the move with animation - use AI-specific handler for multi-jumps
+  executeAIMoveWithAnimation(aiMove);
+}
+
+// Execute AI move with proper multi-jump animation handling
+function executeAIMoveWithAnimation(aiMove) {
+  const from = aiMove.from;
+  const to = aiMove.to;
   const moveObj = {
     jump: aiMove.jump,
     jumped: aiMove.jumped
   };
   
-  lastMove = { from: aiMove.from, to: aiMove.to };
+  lastMove = { from, to };
   
-  performMoveWithAnimation(aiMove.from, aiMove.to, moveObj, () => {
+  // For AI, we need to handle the complete move sequence including multi-jumps
+  performAIMoveSequence(from, to, moveObj, () => {
     // Switch turns
     currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
     isMyTurn = true;
@@ -1154,6 +1162,34 @@ function makeAIMove() {
     highlightLastMove();
     updateStatus();
     checkGameOver();
+  });
+}
+
+// Perform AI move sequence with multi-jump support
+function performAIMoveSequence(from, to, move, callback) {
+  animateMove(from, to, () => {
+    doMove(from, to, move);
+    renderBoard();
+    highlightLastMove();
+    setTimeout(() => {
+      const piece = board[to.row][to.col];
+      if (move && move.jump && piece) {
+        // Check for additional jumps (multi-jump)
+        const jumps = getValidMoves(to.row, to.col, true);
+        if (jumps.length > 0) {
+          const nextJump = jumps[0];
+          lastMove = { from: { ...to }, to: { row: nextJump.row, col: nextJump.col } };
+          performAIMoveSequence(
+            { row: to.row, col: to.col },
+            { row: nextJump.row, col: nextJump.col },
+            nextJump,
+            callback
+          );
+          return;
+        }
+      }
+      callback && callback();
+    }, 100);
   });
 }
 
