@@ -15,6 +15,15 @@ let channel = null;
 // AI mode flag
 let isAIMode = false;
 let aiColor = null;
+let nnueApi = null;
+let nnueLoaded = false;
+const AI_THINK_TIME = 3000; // Max 3 seconds thinking time
+
+// Evaluation bar elements
+const evalSidebar = document.getElementById('eval-sidebar');
+const evalBarRef = document.getElementById('eval-bar-ref');
+const evalFill = document.getElementById('eval-fill');
+const evalText = document.getElementById('eval-text');
 
 console.log('[game.js] Loaded. roomCode:', roomCode);
 
@@ -62,29 +71,66 @@ console.log('[game.js] API URL:', apiUrl);
 // Start AI mode
 function startAIMode() {
   console.log('[game.js] Starting AI mode');
+  console.log('[game.js] evalSidebar element:', evalSidebar);
   isAIMode = true;
-  aiColor = 'black'; // AI plays as black and goes first
-  myColor = 'red'; // Player plays as red
+  aiColor = 'black'; // AI plays as black
+  myColor = 'red'; // Player plays as red and goes first
   myRole = 'Player 1';
-  
+
+  // Show evaluation bar
+  if (evalSidebar) {
+    evalSidebar.style.display = 'flex';
+    console.log('[game.js] Eval bar shown');
+  } else {
+    console.error('[game.js] evalSidebar not found!');
+  }
+
+  // Initialize NNUE if not loaded
+  if (!nnueLoaded && typeof Module !== 'undefined' && Module.cwrap) {
+    initNNUE();
+  }
+
+  // Use minimax if NNUE not available
+  if (!nnueLoaded) {
+    console.log('[game.js] NNUE not available, using minimax AI');
+  }
+
   // Initialize the board
   initBoard();
-  
-  // Set game state - black goes first
+
+  // Set game state - red goes first
   gameStarted = true;
   gameEnded = false;
-  currentPlayer = 'black';
-  isMyTurn = false; // AI goes first
-  
+  currentPlayer = 'red';
+  isMyTurn = true; // Player goes first
+
   // Update UI
   updateStatus();
-  
-  // Trigger AI to make first move
-  setTimeout(() => {
-    makeAIMove();
-  }, 500);
-  
+  updateEvalBar();
+
   console.log('[game.js] AI mode started. Player:', myColor, 'AI:', aiColor);
+}
+
+// Initialize NNUE engine (not currently used, kept for future integration)
+function initNNUE() {
+  console.log('[game.js] NNUE integration not used, using minimax AI');
+  nnueLoaded = false;
+}
+
+// Update evaluation bar (from checkers-nnue style)
+function updateEvalBar() {
+  if (!isAIMode) return;
+
+  // Use minimax evaluation function
+  const score = evaluateBoard(board, myColor);
+  const displayScore = (score / 100).toFixed(1);
+  evalText.textContent = (score > 0 ? "+" : "") + displayScore;
+
+  // Calculate fill percentage for vertical bar (Light/Red advantage)
+  const redScore = (myColor === 'red') ? score : -score;
+  let whitePercent = 50 + (redScore / 600) * 100;
+  whitePercent = Math.max(5, Math.min(95, whitePercent));
+  evalFill.style.height = `${whitePercent}%`;
 }
 
 // --- Room Logic ---
@@ -643,6 +689,7 @@ function onSquareClick(e) {
 
       // If in AI mode, trigger AI move after player
       if (isAIMode && !gameEnded) {
+        updateEvalBar();
         setTimeout(() => {
           makeAIMove();
         }, 1000);
@@ -767,20 +814,22 @@ function showEndGameScreen(message, points) {
     ? `<button id="play-again-btn" style="margin-top:18px;padding:10px 28px;font-size:1em;background:#2e7a3c;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-right:10px;">Play Again</button>
        <button id="leave-btn-final" style="margin-top:18px;padding:10px 28px;font-size:1em;background:#7a5c2e;color:#fff;border:none;border-radius:8px;cursor:pointer;">New Game</button>`
     : `<button id="leave-btn-final" style="margin-top:18px;padding:10px 28px;font-size:1em;background:#7a5c2e;color:#fff;border:none;border-radius:8px;cursor:pointer;">New Game</button>`;
-  
+
   statusDiv.innerHTML = `
     <div style="font-size:1.5em;color:#ffd700;margin:18px 0 10px 0;">${message}</div>
     <div style="font-size:1.1em;color:#fff;">Your points: <b>${points}</b></div>
     ${buttonHtml}
   `;
-  
+
   const leaveBtnFinal = document.getElementById('leave-btn-final');
   if (leaveBtnFinal) {
     leaveBtnFinal.onclick = () => {
+      isAIMode = false;
+      if (evalSidebar) evalSidebar.style.display = 'none';
       window.location.href = '/';
     };
   }
-  
+
   if (isAIMode) {
     const playAgainBtn = document.getElementById('play-again-btn');
     if (playAgainBtn) {
@@ -790,7 +839,7 @@ function showEndGameScreen(message, points) {
       };
     }
   }
-  
+
   console.log('[game.js] showEndGameScreen:', message, points);
 }
 
@@ -938,6 +987,14 @@ if (!startBoard) {
   initializeRoom();
 }
 
+// Listen for WASM ready event
+window.addEventListener('wasm-ready', () => {
+  console.log('[game.js] WASM ready event received');
+  if (!nnueLoaded) {
+    initNNUE();
+  }
+});
+
 // --- STRONG MINIMAX AI ---
 const AI_DEPTH = 6;
 
@@ -984,51 +1041,63 @@ function countCapturablePieces(board, color) {
 function evaluateBoard(board, color) {
   let score = 0;
   const opponent = color === 'red' ? 'black' : 'red';
-  
-  // Count capturable pieces for both sides
-  const myCapturable = countCapturablePieces(board, color);
-  const opponentCapturable = countCapturablePieces(board, opponent);
-  
+
+  // Count pieces first
+  let myPieces = 0, myKings = 0, opponentPieces = 0, opponentKings = 0;
+
   for (let r = 0; r < boardSize; r++) {
     for (let c = 0; c < boardSize; c++) {
       const piece = board[r][c];
       if (!piece) continue;
-      
-      let pieceValue = piece.king ? 500 : 100;
-      
-      // Position bonuses
-      if (piece.color === 'red') {
-        // Red wants to advance to row 0
-        pieceValue += (7 - r) * 2;
-        // Center control
-        if (c >= 2 && c <= 5) pieceValue += 3;
-        // Edge penalty
-        if (c === 0 || c === 7) pieceValue -= 5;
+
+      if (piece.color === color) {
+        myPieces++;
+        if (piece.king) myKings++;
       } else {
-        // Black wants to advance to row 7
-        pieceValue += r * 2;
-        // Center control
-        if (c >= 2 && c <= 5) pieceValue += 3;
-        // Edge penalty
-        if (c === 0 || c === 7) pieceValue -= 5;
+        opponentPieces++;
+        if (piece.king) opponentKings++;
       }
-      
-      // STRICT safety check - MASSIVE penalty for pieces under attack
-      // Only allow if we can capture more of opponent's pieces
+    }
+  }
+
+  // Material balance - this is the most important
+  const myMaterial = myPieces + myKings * 5; // Kings worth 5 regular pieces
+  const opponentMaterial = opponentPieces + opponentKings * 5;
+  score += (myMaterial - opponentMaterial) * 200;
+
+  // Now evaluate positions for remaining pieces
+  for (let r = 0; r < boardSize; r++) {
+    for (let c = 0; c < boardSize; c++) {
+      const piece = board[r][c];
+      if (!piece) continue;
+
+      let pieceValue = 0;
+
+      // Position bonuses (much smaller compared to material)
+      if (piece.color === 'red') {
+        pieceValue += (7 - r) * 2; // Advance bonus
+        if (c >= 2 && c <= 5) pieceValue += 3; // Center control
+        if (c === 0 || c === 7) pieceValue -= 5; // Edge penalty
+        if (r <= 2) pieceValue += 5; // Near promotion
+      } else {
+        pieceValue += r * 2; // Advance bonus
+        if (c >= 2 && c <= 5) pieceValue += 3; // Center control
+        if (c === 0 || c === 7) pieceValue -= 5; // Edge penalty
+        if (r >= 5) pieceValue += 5; // Near promotion
+      }
+
+      // HYPER-DEFENSIVE: ENORMOUS penalty for hanging pieces
       if (isPieceUnderAttack(board, r, c, piece)) {
         if (piece.color === color) {
-          // My piece under attack - only allow if we can capture more opponent pieces
-          if (opponentCapturable > myCapturable) {
-            pieceValue -= 1000; // Still penalty but acceptable if net gain
-          } else {
-            pieceValue -= 2000; // UNACCEPTABLE - massive penalty
-          }
+          // Our piece under attack - MASSIVE penalty
+          // Make it so bad that the AI will do almost anything to avoid it
+          pieceValue -= piece.king ? 1000 : 500;
         } else {
-          // Opponent piece under attack - bonus
-          pieceValue += 50;
+          // Opponent piece under attack - small bonus
+          pieceValue += piece.king ? 100 : 50;
         }
       }
-      
+
       if (piece.color === color) {
         score += pieceValue;
       } else {
@@ -1036,12 +1105,12 @@ function evaluateBoard(board, color) {
       }
     }
   }
-  
-  // Additional penalty if we're losing the piece trade
-  if (myCapturable > opponentCapturable) {
-    score -= (myCapturable - opponentCapturable) * 200;
-  }
-  
+
+  // Mobility (smaller factor)
+  const myMoves = getAllMoves(board, color).length;
+  const opponentMoves = getAllMoves(board, opponent).length;
+  score += (myMoves - opponentMoves) * 3;
+
   return score;
 }
 
@@ -1049,7 +1118,7 @@ function evaluateBoard(board, color) {
 function getAllMoves(board, color) {
   let moves = [];
   let hasJumps = false;
-  
+
   for (let r = 0; r < boardSize; r++) {
     for (let c = 0; c < boardSize; c++) {
       const piece = board[r][c];
@@ -1057,8 +1126,8 @@ function getAllMoves(board, color) {
         const pieceMoves = getValidMovesForPiece(board, r, c, piece);
         for (const move of pieceMoves) {
           if (move.jump) hasJumps = true;
-          moves.push({ 
-            from: { row: r, col: c }, 
+          moves.push({
+            from: { row: r, col: c },
             to: { row: move.row, col: move.col },
             jump: move.jump,
             jumped: move.jumped
@@ -1067,12 +1136,37 @@ function getAllMoves(board, color) {
       }
     }
   }
-  
+
   // Mandatory jumps
   if (hasJumps) {
     moves = moves.filter(m => m.jump);
   }
-  
+
+  // Sort moves: prioritize smart jumps, then center squares, then advances
+  moves.sort((a, b) => {
+    // If both are jumps, use SEE to order them
+    if (a.jump && b.jump) {
+      const seeA = see(board, a, color);
+      const seeB = see(board, b, color);
+      return seeB - seeA; // Prefer jumps with better SEE score
+    }
+
+    // Jumps first
+    if (a.jump && !b.jump) return -1;
+    if (!a.jump && b.jump) return 1;
+
+    // Prefer center squares
+    const aCenter = a.to.col >= 2 && a.to.col <= 5 ? 1 : 0;
+    const bCenter = b.to.col >= 2 && b.to.col <= 5 ? 1 : 0;
+    if (aCenter !== bCenter) return bCenter - aCenter;
+
+    // Prefer advances toward promotion
+    const pieceColor = board[a.from.row][a.from.col].color;
+    const aAdvance = pieceColor === 'red' ? (7 - a.to.row) : a.to.row;
+    const bAdvance = pieceColor === 'red' ? (7 - b.to.row) : b.to.row;
+    return bAdvance - aAdvance;
+  });
+
   return moves;
 }
 
@@ -1108,34 +1202,79 @@ function applyMoveToBoard(board, move) {
   const piece = newBoard[move.from.row][move.from.col];
   newBoard[move.to.row][move.to.col] = piece;
   newBoard[move.from.row][move.from.col] = null;
-  
+
   // Handle promotion
   if ((piece.color === 'red' && move.to.row === 0) || (piece.color === 'black' && move.to.row === 7)) {
     piece.king = true;
   }
-  
+
   // Handle jump
   if (move.jump && move.jumped) {
     newBoard[move.jumped.row][move.jumped.col] = null;
   }
-  
+
   return newBoard;
 }
 
-// Minimax with alpha-beta pruning
+// Quiescence search - extends search when captures are available
+function quiescence(board, alpha, beta, maximizing, color, depth = 4) {
+  const opponent = color === 'red' ? 'black' : 'red';
+
+  // Stand-pat evaluation
+  const standPat = evaluateBoard(board, color);
+  if (maximizing) {
+    if (standPat >= beta) return beta;
+    alpha = Math.max(alpha, standPat);
+  } else {
+    if (standPat <= alpha) return alpha;
+    beta = Math.min(beta, standPat);
+  }
+
+  // Only search captures in quiescence
+  const moves = getAllMoves(board, maximizing ? color : opponent).filter(m => m.jump);
+
+  if (moves.length === 0 || depth === 0) {
+    return standPat;
+  }
+
+  if (maximizing) {
+    let maxEval = standPat;
+    for (const move of moves) {
+      const newBoard = applyMoveToBoard(board, move);
+      const eval = quiescence(newBoard, alpha, beta, false, color, depth - 1);
+      maxEval = Math.max(maxEval, eval);
+      alpha = Math.max(alpha, eval);
+      if (beta <= alpha) break;
+    }
+    return maxEval;
+  } else {
+    let minEval = standPat;
+    for (const move of moves) {
+      const newBoard = applyMoveToBoard(board, move);
+      const eval = quiescence(newBoard, alpha, beta, true, color, depth - 1);
+      minEval = Math.min(minEval, eval);
+      beta = Math.min(beta, eval);
+      if (beta <= alpha) break;
+    }
+    return minEval;
+  }
+}
+
+// Minimax with alpha-beta pruning and quiescence
 function minimax(board, depth, alpha, beta, maximizing, color) {
   const opponent = color === 'red' ? 'black' : 'red';
-  
+
   if (depth === 0) {
-    return evaluateBoard(board, color);
+    // Use quiescence search at leaf nodes to resolve capture sequences
+    return quiescence(board, alpha, beta, maximizing, color);
   }
-  
+
   const moves = getAllMoves(board, maximizing ? color : opponent);
-  
+
   if (moves.length === 0) {
     return maximizing ? -10000 : 10000;
   }
-  
+
   if (maximizing) {
     let maxEval = -Infinity;
     for (const move of moves) {
@@ -1159,16 +1298,85 @@ function minimax(board, depth, alpha, beta, maximizing, color) {
   }
 }
 
-// Get best move for AI
+// Static Exchange Evaluation - evaluate if a capture is good
+function see(board, move, color) {
+  if (!move.jump) return 0;
+
+  const opponent = color === 'red' ? 'black' : 'red';
+  const capturedPiece = board[move.jumped.row][move.jumped.col];
+  if (!capturedPiece) return 0;
+
+  // Value of captured piece
+  const capturedValue = capturedPiece.king ? 1200 : 100;
+
+  // Simulate the capture
+  const newBoard = applyMoveToBoard(board, move);
+
+  // Check if we can be recaptured
+  const opponentMoves = getAllMoves(newBoard, opponent).filter(m => m.jump);
+  let recaptureLoss = 0;
+
+  for (const recapture of opponentMoves) {
+    if (recapture.jumped.row === move.to.row && recapture.jumped.col === move.to.col) {
+      const ourPiece = newBoard[move.to.row][move.to.col];
+      const ourValue = ourPiece.king ? 1200 : 100;
+      recaptureLoss = Math.max(recaptureLoss, ourValue);
+      break;
+    }
+  }
+
+  // Even if the trade is equal, we might want to capture to control the center
+  // Add a small bonus for captures
+  return capturedValue - recaptureLoss + 10;
+}
+
+// Get best move for AI with safety pruning
 function getBestAIMove(board, color) {
   const moves = getAllMoves(board, color);
   if (moves.length === 0) return null;
   if (moves.length === 1) return moves[0];
-  
+
+  const opponent = color === 'red' ? 'black' : 'red';
+
+  // Safety check: don't make a move that gives the opponent a jump
+  const safeMoves = moves.filter(move => {
+    // Simulate the move
+    const newBoard = applyMoveToBoard(board, move);
+
+    // Check if opponent has any jumps available after this move
+    const opponentMoves = getAllMoves(newBoard, opponent);
+    const opponentHasJumps = opponentMoves.some(m => m.jump);
+
+    // If opponent has jumps and this wasn't a mandatory jump, reject
+    if (opponentHasJumps && !move.jump) {
+      return false; // Don't give opponent a free jump
+    }
+
+    // Also check if the piece we just moved is under attack
+    const movedPiece = newBoard[move.to.row][move.to.col];
+    if (movedPiece && isPieceUnderAttack(newBoard, move.to.row, move.to.col, movedPiece)) {
+      // We can be captured after this move
+      // Only allow if it's a jump that gains material
+      if (move.jump) {
+        const capturedPiece = board[move.jumped.row][move.jumped.col];
+        const capturedValue = capturedPiece.king ? 3 : 1;
+        const ourValue = movedPiece.king ? 3 : 1;
+        // Only allow if we clearly win the trade
+        return capturedValue > ourValue;
+      }
+      return false; // Don't move to a square where we'll be captured
+    }
+
+    return true;
+  });
+
+  // If all moves are unsafe, use the original moves as fallback
+  const movesToSearch = safeMoves.length > 0 ? safeMoves : moves;
+
   let bestMove = null;
   let bestScore = -Infinity;
-  
-  for (const move of moves) {
+
+  for (const move of movesToSearch) {
     const newBoard = applyMoveToBoard(board, move);
     const score = minimax(newBoard, AI_DEPTH - 1, -Infinity, Infinity, false, color);
     if (score > bestScore) {
@@ -1176,8 +1384,8 @@ function getBestAIMove(board, color) {
       bestMove = move;
     }
   }
-  
-  return bestMove;
+
+  return bestMove || moves[0];
 }
 
 // Main AI move function
@@ -1187,10 +1395,54 @@ function makeAIMove() {
     return;
   }
 
+  // Use NNUE if available, otherwise fallback to minimax
+  if (nnueLoaded && nnueApi) {
+    makeNNUEAIMove();
+  } else {
+    makeMinimaxAIMove();
+  }
+}
+
+// Minimax AI move (fallback)
+function makeMinimaxAIMove() {
   console.log('[game.js] AI making move with minimax depth', AI_DEPTH);
-  
+
+  // Debug: check what moves are available
+  const availableMoves = getAllMoves(board, aiColor);
+  console.log('[game.js] Available moves for AI:', availableMoves.length, availableMoves);
+
   const aiMove = getBestAIMove(board, aiColor);
-  
+
+  if (!aiMove) {
+    console.log('[game.js] AI has no moves');
+    checkGameOver();
+    return;
+  }
+
+  console.log('[game.js] AI selected move:', aiMove);
+
+  // Execute the move with animation - use AI-specific handler for multi-jumps
+  executeAIMoveWithAnimation(aiMove);
+}
+
+// NNUE AI move
+async function makeNNUEAIMove() {
+  console.log('[game.js] AI making move with NNUE (max think time:', AI_THINK_TIME, 'ms)');
+
+  statusDiv.textContent = "AI thinking...";
+
+  // For simplicity, use minimax AI for now
+  // NNUE integration requires complex board state synchronization
+  // that's difficult without a setBoard function
+  makeMinimaxAIMove();
+}
+
+// Minimax AI move (fallback)
+function makeMinimaxAIMove() {
+  console.log('[game.js] AI making move with minimax depth', AI_DEPTH);
+
+  const aiMove = getBestAIMove(board, aiColor);
+
   if (!aiMove) {
     console.log('[game.js] AI has no moves');
     checkGameOver();
@@ -1211,20 +1463,61 @@ function executeAIMoveWithAnimation(aiMove) {
     jump: aiMove.jump,
     jumped: aiMove.jumped
   };
-  
+
   lastMove = { from, to };
-  
+
   // For AI, we need to handle the complete move sequence including multi-jumps
   performAIMoveSequence(from, to, moveObj, () => {
     // Switch turns
     currentPlayer = currentPlayer === 'red' ? 'black' : 'red';
     isMyTurn = true;
-    
+
     renderBoard();
     highlightLastMove();
     updateStatus();
     checkGameOver();
   });
+}
+
+// Sync local board to NNUE engine
+function syncBoardToNNUE() {
+  if (!nnueLoaded || !nnueApi) return;
+
+  // Reset engine with current human side
+  // Map: red -> Light (1), black -> Dark (0)
+  const humanSide = myColor === 'red' ? 1 : 0;
+  nnueApi.resetGame(humanSide);
+
+  // Since we can't easily sync arbitrary board states to NNUE,
+  // we'll reset to initial position. For a real implementation,
+  // we'd need to replay all moves from the start.
+  // For now, NNUE AI will start from a fresh position when called.
+  // This is acceptable for AI mode since we always start fresh.
+}
+
+// Sync board from NNUE engine
+function syncBoardFromNNUE() {
+  if (!nnueLoaded || !nnueApi) return;
+
+  // Read board state from NNUE and update local board
+  // NNUE uses 0-63 indices, 1=dark pawn, 2=dark king, 3=light pawn, 4=light king
+  for (let i = 0; i < 64; i++) {
+    const row = Math.floor(i / 8);
+    const col = i % 8;
+    const piece = nnueApi.getPieceAt(i);
+
+    if (piece === 0) {
+      board[row][col] = null;
+    } else if (piece === 1) {
+      board[row][col] = { color: 'black', king: false };
+    } else if (piece === 2) {
+      board[row][col] = { color: 'black', king: true };
+    } else if (piece === 3) {
+      board[row][col] = { color: 'red', king: false };
+    } else if (piece === 4) {
+      board[row][col] = { color: 'red', king: true };
+    }
+  }
 }
 
 // Perform AI move sequence with multi-jump support

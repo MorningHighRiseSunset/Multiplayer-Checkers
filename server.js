@@ -44,6 +44,11 @@ app.get("/game.html", (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'game.html'));
 });
 
+// Handle ai-game.html route
+app.get("/ai-game.html", (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'ai-game.html'));
+});
+
 // Health check endpoint to keep server awake
 app.get("/health", (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });

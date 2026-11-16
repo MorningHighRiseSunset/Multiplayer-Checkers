@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Checkers Game</title>
-  <link rel="stylesheet" href="css/game.css">
+  <link rel="stylesheet" href="css/game.css?v=3">
   <!-- Vercel Web Analytics -->
   <script>
     window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
@@ -13,11 +13,32 @@
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <script src="rapid-draughts.js"></script>
   <script src="js/pusher-client.js"></script>
+  <!-- Configure WASM Module before loading -->
+  <script>
+    var Module = {
+      locateFile: function(file) {
+        return window.location.origin + '/ai/' + file;
+      },
+      onRuntimeInitialized: function() {
+        console.log('[game.js] WASM runtime initialized');
+        window.dispatchEvent(new Event('wasm-ready'));
+      }
+    };
+  </script>
+  <script src="ai/checkers.js"></script>
 </head>
 <body>
   <h1 class="main-title">Checkers</h1>
   
   <div class="main-container">
+    <!-- Evaluation Bar Sidebar (from checkers-nnue) -->
+    <div class="eval-sidebar" id="eval-sidebar">
+      <div class="eval-bar-container" id="eval-bar-ref">
+        <div id="eval-fill" class="eval-fill"></div>
+        <span id="eval-text">0.0</span>
+      </div>
+    </div>
+
     <!-- Left Panel: Game Info -->
     <div class="side-panel left-panel">
       <div class="panel-section">
@@ -27,23 +48,23 @@
           <div id="join-url"></div>
           <div class="url-buttons">
             <button id="copy-url-btn">Copy URL</button>
-            <button id="play-ai-btn">Play AI</button>
+            <button id="play-ai-btn">Play vs AI</button>
           </div>
         </div>
       </div>
-      
+
       <div class="panel-section">
         <h3>Controls</h3>
         <div id="controls">
           <button id="print-btn">Print Moves</button>
         </div>
       </div>
-      
+
       <div class="panel-section">
         <h3>Status</h3>
         <div id="game-status"></div>
       </div>
-      
+
       <div class="panel-section">
         <h3>Move History</h3>
         <div id="move-history-container">
@@ -51,7 +72,7 @@
         </div>
       </div>
     </div>
-    
+
     <!-- Center: Game Board -->
     <div class="center-panel">
       <div id="game-board"></div>
